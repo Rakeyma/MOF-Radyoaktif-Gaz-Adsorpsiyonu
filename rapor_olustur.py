@@ -38,6 +38,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from docx import Document
 from docx.shared import Cm, Pt, RGBColor
@@ -565,6 +566,26 @@ def _panel_notu(amac: str) -> str:
     return f"{panel} modellerine ait {amac} grafikleri verilmiştir."
 
 
+def _esik_ozeti(kol: str) -> str | None:
+    """Confusion-matrix sınıf sınırlarını (Q1/medyan/Q3) GERÇEK OOF verisinden
+    hesaplar - grafik_ortak._dinamik_esikler ile AYNI mantık (kullanıcı
+    isteği: 'confusion matrislerinde sınıflandırma neye göre' sorusunun
+    cevabı, sayılarla birlikte, elle yazılmadan rapora eklensin)."""
+    for model_adi in MODEL_KLASORLERI:
+        f = PROJECT_ROOT / model_adi / "sonuclar" / "test_tahminleri_oof.csv"
+        if not f.exists():
+            continue
+        odf = pd.read_csv(f)
+        kolon = f"gercek_{kol}"
+        if kolon not in odf.columns or odf[kolon].dropna().empty:
+            continue
+        q1, q2, q3 = np.percentile(odf[kolon].dropna().values, [25, 50, 75])
+        birim = TARGET_UNITS.get(kol, "")
+        return (f"< {q1:.3g}, {q1:.3g}–{q2:.3g}, {q2:.3g}–{q3:.3g}, > {q3:.3g} {birim} "
+                f"(n={len(odf[kolon].dropna())} örnek)")
+    return None
+
+
 def bolum_model_detay(doc):
     add_heading(doc, "6. Model Grafikleri", level=1)
     doc.add_paragraph()
@@ -577,6 +598,19 @@ def bolum_model_detay(doc):
             (f"confusion_matrix_{{m}}_{kol}.tif", "Sınıf-Bazında Karışıklık Matrisi", "karışıklık matrisi"),
         ]:
             add_paragraph(doc, alt_baslik, size=10, bold=True, indent=True)
+            if alt_baslik == "Sınıf-Bazında Karışıklık Matrisi":
+                esik_str = _esik_ozeti(kol)
+                add_paragraph(doc,
+                    "Sınıflandırma SABİT bir fiziksel eşiğe değil, bu hedefin GERÇEK "
+                    "değerlerinin kendi çeyreklik (quartile) dağılımına göre otomatik "
+                    "belirlenir: örnekler küçükten büyüğe sıralanıp Q1 (%25), medyan "
+                    "(%50) ve Q3 (%75) noktalarından 4 eşit-büyüklükte sınıfa bölünür "
+                    "(<Q1 / Q1-medyan / medyan-Q3 / >Q3) — yani 'düşük/orta-düşük/"
+                    "orta-yüksek/yüksek' göreli sınıflardır, hedeften hedefe ve "
+                    "modelden modele YENİDEN hesaplanır (bkz. grafik_ortak."
+                    "_dinamik_esikler). " + (f"Bu hedef için gerçek sınıf sınırları: "
+                    f"{esik_str}." if esik_str else ""), size=9, indent=True)
+                doc.add_paragraph()
             for model_adi in MODEL_SIRASI_RAPOR:
                 gdir = PROJECT_ROOT / model_adi / "sonuclar" / "grafikler"
                 add_image(doc, gdir / sablon.format(m=model_adi), width_cm=9)
