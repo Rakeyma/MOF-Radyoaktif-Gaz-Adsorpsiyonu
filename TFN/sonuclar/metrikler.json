@@ -1,0 +1,62 @@
+{
+  "model_adi": "TFN",
+  "asama": "finetune",
+  "girdi": "/home/rakeyma/Tüm_çalışmalar/MOF Radyoaktif Gaz Adsorpsiyonu/data/processed/gaz_adsorpsiyon_dataset_final.csv",
+  "k_folds": 3,
+  "n_grup_toplam": 300,
+  "n_ornek_toplam": 2100,
+  "on_egitimli_kullanildi": true,
+  "pooled_out_of_fold_metrikleri": {
+    "xe_uptake_mmol_g": {
+      "MAE": 0.021930655426076983,
+      "RMSE": 0.0335975553537456,
+      "R2": 0.9319899117865796,
+      "n_ornek": 2100
+    },
+    "kr_uptake_mmol_g": {
+      "MAE": 0.017109666873979575,
+      "RMSE": 0.026334557216558696,
+      "R2": 0.9269056575118472,
+      "n_ornek": 2100
+    },
+    "xe_kr_selectivity": {
+      "MAE": 0.4383405802316283,
+      "RMSE": 0.5612390901587181,
+      "R2": 0.6525861885860142,
+      "n_ornek": 2100
+    },
+    "i2_uptake_mmol_g": {
+      "MAE": 0.014951306907141252,
+      "RMSE": 0.02254578439104693,
+      "R2": 0.9005182012541232,
+      "n_ornek": 2100
+    },
+    "overall": {
+      "MAE": 0.12308305235970653,
+      "R2": 0.8529999897846411,
+      "n_ornek": 2100
+    }
+  },
+  "hiperparametreler": {
+    "cutoff": 8.0,
+    "batch_size": 32,
+    "max_epochs": 15,
+    "early_stop_patience": 5,
+    "lr": 0.001,
+    "weight_decay": 1e-05,
+    "aux_dim": 15,
+    "hidden_dim": 128,
+    "dropout": 0.1,
+    "seed": 42,
+    "emb_dim": 64,
+    "freeze_encoder_epochs": 5,
+    "target_columns": [
+      "xe_uptake_mmol_g",
+      "kr_uptake_mmol_g",
+      "xe_kr_selectivity",
+      "i2_uptake_mmol_g"
+    ],
+    "n_layers": 4,
+    "l_max": 1
+  }
+}

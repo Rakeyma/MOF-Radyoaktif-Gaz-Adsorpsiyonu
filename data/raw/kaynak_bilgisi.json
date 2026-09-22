@@ -1,0 +1,13 @@
+{
+  "olusturma_zamani_utc": "2026-08-12T20:15:45.272844+00:00",
+  "finetune_satir_sayisi": 300,
+  "pretrain_satir_sayisi": 1500,
+  "finetune_kaynak_dagilimi": {
+    "HF_COREMOF_GCMC": 300
+  },
+  "pretrain_kaynak_dagilimi": {
+    "HF_COREMOF_GCMC": 1164,
+    "PROCEDURAL_FALLBACK": 336
+  },
+  "data_source_ayari": "auto"
+}

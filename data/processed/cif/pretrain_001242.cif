@@ -1,0 +1,39 @@
+# generated using pymatgen
+data_Mg6C3O4
+_symmetry_space_group_name_H-M   'P 1'
+_cell_length_a   25.80696940
+_cell_length_b   25.80696940
+_cell_length_c   6.77703499
+_cell_angle_alpha   90.00000000
+_cell_angle_beta   90.00000000
+_cell_angle_gamma   120.00000000
+_symmetry_Int_Tables_number   1
+_chemical_formula_structural   Mg6C3O4
+_chemical_formula_sum   'Mg6 C3 O4'
+_cell_volume   3908.80831377
+_cell_formula_units_Z   1
+loop_
+ _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+  1  'x, y, z'
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_occupancy
+  Mg  Mg0  1  0.99968212  0.01628077  0.00599664  1
+  Mg  Mg1  1  0.48593104  0.49395498  0.01736425  1
+  Mg  Mg2  1  0.49901111  0.98665612  0.50498769  1
+  Mg  Mg3  1  0.00519967  0.51842208  0.50445236  1
+  Mg  Mg4  1  0.25836165  0.26315783  0.23416342  1
+  Mg  Mg5  1  0.74879162  0.74759051  0.24902237  1
+  O  O6  1  0.42903869  0.43625569  0.07156404  1
+  C  C7  1  0.37214635  0.37855641  0.12576384  1
+  O  O8  1  0.31525400  0.32085712  0.17996363  1
+  O  O9  1  0.53850316  0.54468209  0.06369587  1
+  C  C10  1  0.59107527  0.59540919  0.11002750  1
+  O  O11  1  0.64364739  0.64613630  0.15635912  1
+  C  C12  1  0.69621951  0.69686341  0.20269074  1

@@ -1,0 +1,21 @@
+{
+  "pretrain_satir": 1500,
+  "pretrain_tam": 1500,
+  "finetune_satir": 2100,
+  "finetune_tam": 2100,
+  "finetune_label_source_dagilimi": {
+    "xe_uptake_mmol_g": {
+      "PROXY_PORE_CORRELATION": 2100
+    },
+    "kr_uptake_mmol_g": {
+      "PROXY_PORE_CORRELATION": 2100
+    },
+    "xe_kr_selectivity": {
+      "PROXY_PORE_CORRELATION": 2100
+    },
+    "i2_uptake_mmol_g": {
+      "PROXY_PORE_CORRELATION": 2100
+    }
+  },
+  "finetune_benzersiz_temel_mof": 300
+}

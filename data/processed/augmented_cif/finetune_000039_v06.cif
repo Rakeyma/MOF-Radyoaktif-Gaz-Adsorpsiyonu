@@ -1,0 +1,47 @@
+# generated using pymatgen
+data_CuH8(C2N)4
+_symmetry_space_group_name_H-M   'P 1'
+_cell_length_a   6.85400000
+_cell_length_b   6.85400000
+_cell_length_c   6.89300000
+_cell_angle_alpha   90.00000000
+_cell_angle_beta   90.00000000
+_cell_angle_gamma   90.00000000
+_symmetry_Int_Tables_number   1
+_chemical_formula_structural   CuH8(C2N)4
+_chemical_formula_sum   'Cu1 H8 C8 N4'
+_cell_volume   323.81463919
+_cell_formula_units_Z   1
+loop_
+ _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+  1  'x, y, z'
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_occupancy
+  Cu  Cu0  1  0.46507321  0.51544514  0.52034690  1
+  H  H1  1  0.84447057  0.50728894  0.23395811  1
+  H  H2  1  0.18076305  0.48490997  0.22325132  1
+  H  H3  1  0.49430973  0.82756361  0.24078981  1
+  H  H4  1  0.53026370  0.12190523  0.21412542  1
+  H  H5  1  0.16109132  0.52232253  0.75328269  1
+  H  H6  1  0.77554277  0.51577770  0.79940209  1
+  H  H7  1  0.46571290  0.83060910  0.81024244  1
+  H  H8  1  0.47928088  0.16894213  0.79070738  1
+  C  C9  1  0.87156210  0.48916342  0.30468738  1
+  C  C10  1  0.09783784  0.48479776  0.34096896  1
+  C  C11  1  0.51220082  0.92568830  0.38157090  1
+  C  C12  1  0.50399182  0.09491578  0.32983999  1
+  C  C13  1  0.08245606  0.50861316  0.65354274  1
+  C  C14  1  0.90895654  0.48206800  0.65409307  1
+  C  C15  1  0.50830948  0.89659942  0.62630182  1
+  C  C16  1  0.49970801  0.08559057  0.68557763  1
+  N  N17  1  0.81666396  0.45612396  0.51531699  1
+  N  N18  1  0.20948202  0.47147792  0.51678514  1
+  N  N19  1  0.47540167  0.82001323  0.48765106  1
+  N  N20  1  0.47082438  0.24275903  0.47044899  1

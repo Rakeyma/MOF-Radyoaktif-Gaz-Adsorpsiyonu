@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# Büyük/tekrar-üretilebilir binary sonuçlar (kod ile yeniden üretilebilir):
+# HER .tif zaten aynı klasörde .png olarak da var (repo için o yeterli,
+# .tif'ler 40-90MB/adet, yüzlerce dosya -> ~7.5GB) - 600dpi .tif'ler
+# yalnızca YEREL/dergi-baskı kullanımı içindir, git'e girmez.
+*.tif
+
+# Bu .docx TÜM .tif grafikleri gömer (~98MB) - .png'leri gömen daha küçük
+# bir sürüm yoksa, bu dosya da kod ile (rapor_olustur.py) yeniden üretilir.
+MOF_Radyoaktif_Gaz_Adsorpsiyonu_Raporu.docx
+
+# Ham per-kenar XAI dökümü (79MB, atom-seviyesi özet CSV'ler zaten yeterli)
+Edge_Attribution/sonuclar/edge_attribution_kenarlar.csv

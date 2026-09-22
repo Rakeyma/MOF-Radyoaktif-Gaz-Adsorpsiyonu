@@ -1,0 +1,48 @@
+====================================================================================================
+MOF RADYOAKTIF GAZ ADSORPSIYON PIPELINE — MODEL KARSILASTIRMASI
+====================================================================================================
+
+Model                    MAE      RMSE      R2   MedianAE    MaxErr  PearsonR        n
+----------------------------------------------------------------------------------------------------
+PNA_GNN               0.1226    0.1603   0.854     0.0986    0.8025    0.9221     8400
+EGNN                  0.1225    0.1602   0.854     0.0982    0.7887    0.9221     8400
+SE3_Transformer       0.1225    0.1599   0.854     0.0992    0.7874    0.9222     8400
+DeeperGCN             0.1232    0.1609   0.854     0.0994    0.7923    0.9218     8400
+GatedGCN              0.1228    0.1602   0.854     0.0980    0.7978    0.9217     8400
+TFN                   0.1231    0.1609   0.853     0.0992    0.8032    0.9215     8400
+GraphGPS              0.1240    0.1620   0.852     0.0997    0.8067    0.9208     8400
+GIN                   0.1234    0.1613   0.852     0.0988    0.8175    0.9207     8400
+ECC                   0.1239    0.1621   0.851     0.1000    0.8040    0.9206     8400
+GAT                   0.1238    0.1614   0.851     0.0995    0.8048    0.9202     8400
+
+Hedef-basina detay (asagida her hedef icin en iyi 3 model):
+
+  xe_uptake_mmol_g:
+    SE3_Transformer    R2=0.933  MAE=0.0218  (n=2100)
+    PNA_GNN            R2=0.933  MAE=0.0219  (n=2100)
+    DeeperGCN          R2=0.933  MAE=0.0218  (n=2100)
+
+  kr_uptake_mmol_g:
+    DeeperGCN          R2=0.929  MAE=0.0169  (n=2100)
+    GraphGPS           R2=0.928  MAE=0.0170  (n=2100)
+    PNA_GNN            R2=0.928  MAE=0.0171  (n=2100)
+
+  xe_kr_selectivity:
+    SE3_Transformer    R2=0.658  MAE=0.4358  (n=2100)
+    GatedGCN           R2=0.656  MAE=0.4368  (n=2100)
+    EGNN               R2=0.656  MAE=0.4360  (n=2100)
+
+  i2_uptake_mmol_g:
+    PNA_GNN            R2=0.902  MAE=0.0148  (n=2100)
+    GraphGPS           R2=0.902  MAE=0.0149  (n=2100)
+    ECC                R2=0.902  MAE=0.0150  (n=2100)
+
+Notlar:
+  - 'overall' satiri 4 hedefin (Xe/Kr/I2 kapasitesi, Xe/Kr secicilik) metrik ORTALAMASIDIR.
+  - MedianAE: MAE'nin aykiri-deger-dayanikli hali. MaxError: en kotu-durum mutlak hata.
+  - Etiketlerin bir kismi NLP-literatur (gercek), bir kismi gozeneklilik-proxy korelasyon
+    kaynaklidir (bkz. eslesme_4_dataset_birlestirici.py 'label_source_<hedef>' sutunlari) -
+    R2/MAE yorumlanirken bu etiket-kalitesi karisikligi goz onunde bulundurulmalidir.
+  - 11 modelin TAMAMI AYNI egitim protokolunu (K-fold, erken durdurma, transfer learning)
+    paylasir (egitim_ortak.py) - farklar SADECE encoder mimarisinden kaynaklanir.
+====================================================================================================

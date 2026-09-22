@@ -1,0 +1,3 @@
+mof_name,target_column,value,unit,context_sentence,source_api,source_id,query
+MOF-11,xe_uptake_mmol_g,3.46,mmol g,The breakthrough experiments confirm that MOF-11 exhibits the exceptional separation performance for 20/80 Xe/Kr mixture with both record-high Xe uptake capacity (3.46 mmol g -1 ) and Kr productivity (350 cm 3  g -1 ).,CrossRef,10.21203/rs.3.rs-1266060/v1,Xenon adsorption capacity metal-organic framework
+MOF-11,kr_uptake_mmol_g,3.46,mmol g,The breakthrough experiments confirm that MOF-11 exhibits the exceptional separation performance for 20/80 Xe/Kr mixture with both record-high Xe uptake capacity (3.46 mmol g -1 ) and Kr productivity (350 cm 3  g -1 ).,CrossRef,10.21203/rs.3.rs-1266060/v1,Xenon adsorption capacity metal-organic framework
