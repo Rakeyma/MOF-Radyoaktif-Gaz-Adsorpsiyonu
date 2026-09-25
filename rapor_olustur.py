@@ -47,7 +47,7 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from scipy.stats import pearsonr
 
-from paths import PROJECT_ROOT, MODEL_KLASORLERI, XAI_KLASORLERI, PANEL_HARFLERI
+from paths import PROJECT_ROOT, MODEL_KLASORLERI, XAI_KLASORLERI, PANEL_HARFLERI, GITHUB_REPO_URL
 from egitim_ortak import TARGET_COLUMNS, TARGET_UNITS, PRETRAIN_MAX_EPOCHS, PRETRAIN_PATIENCE
 
 BASE = Path(__file__).resolve().parent
@@ -201,6 +201,26 @@ def bolum_veri_kaynagi(doc):
         "bkz. eslesme_4_dataset_birlestirici.py).",
     ])
     doc.add_paragraph()
+    add_heading(doc, "0.1 Kod ve Veri Erişilebilirliği (Code & Data Availability)", level=2)
+    add_paragraph(doc,
+        "Bu raporu üreten boru hattının TAMAMI — tüm kaynak kodu, üretilen veri "
+        "seti (CIF yapıları dahil), model checkpoint'leri, model-başına sonuç "
+        "CSV/JSON dosyaları, XAI çıktıları ve tüm grafiklerin .png sürümleri — "
+        "aşağıdaki herkese açık depoda yayımlanmıştır:", size=10, indent=True)
+    doc.add_paragraph()
+    citation_box(doc, GITHUB_REPO_URL)
+    doc.add_paragraph()
+    add_paragraph(doc,
+        "Depoya DAHİL EDİLMEYENLER (kod ile yeniden üretilebildikleri ve git için "
+        "fazla büyük oldukları için .gitignore ile hariç tutulmuştur): 600 dpi .tif "
+        "grafikler (dosya başına 40-90 MB; .png ikizleri depoda MEVCUTTUR), bu "
+        "grafikleri gömen ~98 MB'lik sonuç .docx dosyası ve ham per-kenar XAI "
+        "dökümü (edge_attribution_kenarlar.csv, 79 MB). İlgili grafik.py / "
+        "rapor_olustur.py yeniden çalıştırıldığında hepsi birebir yeniden üretilir. "
+        "Verinin kökeni ve hangi kısmının sentetik olduğu, depo kökündeki "
+        "VERI_KAYNAGI_VE_SINIRLAMALAR.md belgesinde ayrıntılı olarak "
+        "belgelenmiştir (özeti §0.2'dedir).", size=9, indent=True)
+    page_break(doc)
     _bolum_etiket_kokeni(doc)
     page_break(doc)
 
@@ -230,7 +250,7 @@ def _bolum_etiket_kokeni(doc):
                             "dağılımı raporlanamıyor.]", size=9, indent=True)
         return
 
-    add_heading(doc, "0.1 Hedef Etiketlerin Kökeni (KRİTİK)", level=2)
+    add_heading(doc, "0.2 Hedef Etiketlerin Kökeni (KRİTİK)", level=2)
     satirlar = []
     for kol, sayim in dagilim.items():
         toplam = sum(sayim.values())

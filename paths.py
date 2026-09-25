@@ -102,6 +102,14 @@ GAS_FINETUNE_CSV = DATA_PROCESSED / "gaz_adsorpsiyon_dataset_final.csv"
 PRETRAINED_ENCODER_FILENAME = "encoder_pretrained.pt"
 
 # --------------------------------------------------------------------------
+# KOD/VERI ERISILEBILIRLIGI (Code & Data Availability)
+# --------------------------------------------------------------------------
+# Projenin herkese acik deposu. TEK KAYNAK: hem rapor_olustur.py hem
+# bilgi_raporu_olustur.py bu sabiti okur - iki raporda farkli/eskimis bir
+# adres yazma riski olmasin diye elle tekrar edilmez.
+GITHUB_REPO_URL = "https://github.com/Rakeyma/MOF-Radyoaktif-Gaz-Adsorpsiyonu"
+
+# --------------------------------------------------------------------------
 # MODEL / XAI KLASOR LISTELERI (model_karsilastirma*.py ve rapor
 # scriptlerinin merkezi olarak kullandigi TEK liste)
 # --------------------------------------------------------------------------
