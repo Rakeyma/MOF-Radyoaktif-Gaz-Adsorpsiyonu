@@ -220,12 +220,41 @@ def bolum_veri_kaynagi(doc):
 # KOD VARSAYILANLARI DEĞİL, çünkü bunlar ortam değişkenleriyle (KFOLD_OVERRIDE,
 # MAX_EPOCHS_OVERRIDE, ...) ezilmiş olabilir — bkz. paths.py/egitim_ortak.py.
 # ---------------------------------------------------------------------------
-def _ilk_metrikler_json() -> dict | None:
+def _hedef_etiket(kol: str) -> str:
+    """Hedef sütun adını insan-okunur başlığa çevirir ('i2_uptake_mmol_g' ->
+    'I₂ Uptake (mmol/g)'). Kullanıcı geri bildirimi: raporda/grafiklerde ham
+    kolon adları ('i2 falan yazılmış') görünmemeli. grafik_ortak'taki etiketler
+    matplotlib LaTeX kipi içerdiğinden Unicode'a çevrilir (Word LaTeX render
+    etmez)."""
+    from grafik_ortak import DISPLAY_LABELS
+    etiket = DISPLAY_LABELS.get(kol, kol)
+    return etiket.replace("$_2$", "₂").replace("$_", "").replace("$", "")
+
+
+def _tum_metrikler_json() -> dict[str, dict]:
+    """{model_adi: metrikler.json} — SADECE gerçekten eğitilmiş modeller.
+    (Bir model implemente edilmiş ama koşulmamış olabilir; o zaman hiçbir
+    sonucu yoktur ve raporda EĞİTİLMİŞ gibi sayılmamalıdır.)"""
+    sonuc = {}
     for model_adi in MODEL_KLASORLERI:
         f = PROJECT_ROOT / model_adi / "sonuclar" / "metrikler.json"
         if f.exists():
-            return json.loads(f.read_text(encoding="utf-8"))
-    return None
+            sonuc[model_adi] = json.loads(f.read_text(encoding="utf-8"))
+    return sonuc
+
+
+def _ilk_metrikler_json() -> dict | None:
+    tumu = _tum_metrikler_json()
+    return next(iter(tumu.values()), None)
+
+
+def EGITILMIS_MODELLER() -> list[str]:
+    """Bu koşumda GERÇEKTEN eğitilip sonuç üretmiş modeller (rapor metinleri
+    ve panel harfleri bu listeye göre yazılır - kullanıcı geri bildirimi:
+    rapor '11 model' diyordu ama DimeNetPP hiç eğitilmemişti, grafikleri
+    '[Henüz üretilmedi]' yer tutucusuydu; yine de panel açıklaması '(k)
+    DimeNetPP ... verilmiştir' diyordu - ÇELİŞKİLİ/yanıltıcıydı)."""
+    return list(_tum_metrikler_json().keys())
 
 
 def bolum_hiperparametreler(doc):
@@ -238,6 +267,10 @@ def bolum_hiperparametreler(doc):
         return
 
     hp = meta["hiperparametreler"]
+    tum_meta = _tum_metrikler_json()
+    egitilmis = list(tum_meta.keys())
+    egitilmemis = [m for m in MODEL_KLASORLERI if m not in tum_meta]
+
     add_paragraph(doc,
         f"Bu koşumda K-Fold çapraz doğrulamanın K değeri = {meta['k_folds']} olarak "
         f"kullanılmıştır (kod varsayılanı egitim_ortak.py'de K_FOLDS=5'tir; bu "
@@ -248,53 +281,95 @@ def bolum_hiperparametreler(doc):
         f"varyantlarıyla birlikte {meta['n_ornek_toplam']} örnek) her fold için "
         f"ayrı bir eğitim/test bölünmesi yapılmış, aynı temel MOF'tan türetilen "
         f"TÜM augment varyantları (defect/substitution/functional-group/gaussian-"
-        f"noise) SIZINTI olmaması için AYNI fold'da tutulmuştur "
-        f"(group_column=base_mof_id, bkz. §3 hemen altındaki not).",
+        f"noise) SIZINTI olmaması için AYNI fold'da tutulmuştur: bir MOF'un "
+        f"augment kopyası eğitim setinde, orijinali test setinde olamaz — bu, "
+        f"K-Fold bölmesinin 'base_mof_id' sütununa göre GRUPLANARAK yapılmasıyla "
+        f"garanti edilir (egitim_ortak.py, GROUP_COLUMN).",
         size=10, indent=True)
     doc.add_paragraph()
 
-    ortak_satirlar = [
-        ("K (K-Fold sayısı)", meta["k_folds"], "Veri kaç eşit parçaya bölünüp sırayla test edildiği"),
-        ("Fine-tune epoch sayısı (üst sınır)", hp.get("max_epochs"),
+    if egitilmemis:
+        add_paragraph(doc,
+            f"KAPSAM NOTU (şeffaflık): bu depoda {len(MODEL_KLASORLERI)} GNN mimarisi "
+            f"IMPLEMENTE edilmiştir, ancak bu koşumda {len(egitilmis)} tanesi "
+            f"eğitilip değerlendirilmiştir. Eğitilmemiş model(ler): "
+            f"{', '.join(egitilmemis)} — bu modeller için hiçbir sonuç/grafik "
+            f"üretilmemiştir ve aşağıdaki hiçbir tabloda/karşılaştırmada YER "
+            f"ALMAZLAR. Raporun geri kalanında 'tüm modeller' ifadesi, eğitilmiş "
+            f"bu {len(egitilmis)} modeli kasteder.", size=9, indent=True)
+        doc.add_paragraph()
+
+    # Bir hiperparametre GERÇEKTEN ortak mı, yoksa modele göre mi değişiyor?
+    # (Kullanıcı geri bildirimi / gerçek hata: rapor batch_size'ı TEK bir
+    # ortak değer olarak gösterip "tüm modellerde ortaktır" diyordu, oysa
+    # GraphGPS/ECC/SE3_Transformer=16 iken diğerleri=32 idi. Artık hangi
+    # anahtarın ortak olduğu VERİDEN tespit edilir, elle varsayılmaz.)
+    def _degerler(anahtar):
+        return {m: md["hiperparametreler"].get(anahtar) for m, md in tum_meta.items()}
+
+    def _ortak_mi(anahtar):
+        v = list(_degerler(anahtar).values())
+        return len(set(map(str, v))) <= 1
+
+    tanimlar = [
+        ("max_epochs", "Fine-tune epoch sayısı (üst sınır)",
          "Erken durdurma tetiklenmezse çalışacak MAKSİMUM epoch"),
-        ("Erken durdurma sabrı (patience)", hp.get("early_stop_patience"),
+        ("early_stop_patience", "Erken durdurma sabrı (patience)",
          "Validasyon hatası bu kadar epoch boyunca İYİLEŞMEZSE eğitim durur"),
-        ("Encoder dondurma süresi (freeze_encoder_epochs)", hp.get("freeze_encoder_epochs"),
+        ("freeze_encoder_epochs", "Encoder dondurma süresi (freeze_encoder_epochs)",
          "İlk N epoch'ta SADECE regresyon başı eğitilir, ön-eğitimli encoder dondurulur"),
-        ("Öğrenme oranı (learning rate)", hp.get("lr"), "AdamW optimizer başlangıç adım büyüklüğü"),
-        ("Ağırlık sönümü (weight decay)", hp.get("weight_decay"), "L2 regularizasyon katsayısı"),
-        ("Batch boyutu", hp.get("batch_size"), "Her gradyan adımında kullanılan örnek sayısı"),
-        ("Gizli katman boyutu (hidden_dim)", hp.get("hidden_dim"), "Encoder'ın atom-gömme/katman genişliği"),
-        ("Çıktı gömme boyutu (emb_dim)", hp.get("emb_dim"), "Encoder'dan regresyon başına giden vektör boyutu"),
-        ("Dropout", hp.get("dropout"), "Regresyon başındaki düşürme (overfitting önleme) oranı"),
-        ("Kesme yarıçapı (cutoff)", f"{hp.get('cutoff')} Å", "3B komşuluk grafiği için atomlar-arası maksimum bağ mesafesi"),
-        ("Rastgelelik tohumu (seed)", hp.get("seed"), "Tekrarlanabilirlik için sabit rastgelelik başlangıcı"),
-        ("Yardımcı özellik boyutu (aux_dim)", hp.get("aux_dim"), "Gözeneklilik/kompozisyon özellik vektörü uzunluğu (bkz. §2)"),
+        ("lr", "Öğrenme oranı (learning rate)", "AdamW optimizer başlangıç adım büyüklüğü"),
+        ("weight_decay", "Ağırlık sönümü (weight decay)", "L2 regularizasyon katsayısı"),
+        ("batch_size", "Batch boyutu", "Her gradyan adımında kullanılan örnek sayısı"),
+        ("hidden_dim", "Gizli katman boyutu (hidden_dim)", "Encoder'ın atom-gömme/katman genişliği"),
+        ("emb_dim", "Çıktı gömme boyutu (emb_dim)", "Encoder'dan regresyon başına giden vektör boyutu"),
+        ("dropout", "Dropout", "Regresyon başındaki düşürme (overfitting önleme) oranı"),
+        ("cutoff", "Kesme yarıçapı (cutoff)", "3B komşuluk grafiği için atomlar-arası maksimum bağ mesafesi (Å)"),
+        ("seed", "Rastgelelik tohumu (seed)", "Tekrarlanabilirlik için sabit rastgelelik başlangıcı"),
+        ("aux_dim", "Yardımcı özellik boyutu (aux_dim)",
+         "Gözeneklilik/kompozisyon özellik vektörü uzunluğu (bkz. §2)"),
     ]
+    ortak_satirlar = [("K (K-Fold sayısı)", meta["k_folds"],
+                        "Veri kaç eşit parçaya bölünüp sırayla test edildiği")]
+    degisken_anahtarlar = []
+    for anahtar, etiket, aciklama in tanimlar:
+        if _ortak_mi(anahtar):
+            ortak_satirlar.append((etiket, hp.get(anahtar), aciklama))
+        else:
+            degisken_anahtarlar.append((anahtar, etiket, aciklama))
+
     kv_table(doc, ["Hiperparametre", "Değer", "Anlamı"], ortak_satirlar)
     doc.add_paragraph()
-    add_paragraph(doc, "Yukarıdaki hiperparametreler 11 modelin TAMAMINDA ortaktır (egitim_ortak.py "
-                        "tarafından paylaşılır); sadece mimari-özgü katman sayısı gibi değerler modelden "
-                        "modele değişir (aşağıdaki tablo).", size=9, indent=True)
+    add_paragraph(doc, f"Yukarıdaki tablodaki değerler, eğitilmiş {len(egitilmis)} modelin "
+                        f"HEPSİNDE AYNIDIR (bu, her modelin kendi metrikler.json'ı "
+                        f"karşılaştırılarak DOĞRULANMIŞTIR, varsayılmamıştır). Modelden "
+                        f"modele DEĞİŞEN parametreler aşağıdaki tabloda ayrıca verilmiştir.",
+                  size=9, indent=True)
     doc.add_paragraph()
 
-    add_heading(doc, "1.1 Modele Özgü Mimari Parametreleri", level=2)
-    ortak_anahtarlar = {"cutoff", "batch_size", "max_epochs", "early_stop_patience", "lr", "weight_decay",
-                         "aux_dim", "hidden_dim", "dropout", "seed", "emb_dim", "freeze_encoder_epochs",
-                         "target_columns"}
+    add_heading(doc, "1.1 Modele Göre Değişen Parametreler", level=2)
+    if degisken_anahtarlar:
+        add_paragraph(doc,
+            "DİKKAT: aşağıdaki eğitim hiperparametreleri tüm modellerde AYNI DEĞİLDİR; "
+            "model karşılaştırma tablosu (§3) okunurken bu fark göz önünde "
+            "bulundurulmalıdır (örn. farklı batch boyutu, etkin öğrenme dinamiğini "
+            "bir miktar değiştirir).", size=9, indent=True)
+        for anahtar, etiket, aciklama in degisken_anahtarlar:
+            dv = _degerler(anahtar)
+            add_paragraph(doc, f"{etiket} — {aciklama}:", size=9, bold=True, indent=True)
+            kv_table(doc, ["Model", "Değer"], [(m, v) for m, v in dv.items()])
+            doc.add_paragraph()
+
+    ortak_anahtarlar = {a for a, _, _ in tanimlar} | {"target_columns"}
     mimari_satirlar = []
-    for model_adi in MODEL_KLASORLERI:
-        f = PROJECT_ROOT / model_adi / "sonuclar" / "metrikler.json"
-        if not f.exists():
-            continue
-        m_hp = json.loads(f.read_text(encoding="utf-8"))["hiperparametreler"]
-        ekstra = {k: v for k, v in m_hp.items() if k not in ortak_anahtarlar}
+    for model_adi, md in tum_meta.items():
+        ekstra = {k: v for k, v in md["hiperparametreler"].items() if k not in ortak_anahtarlar}
         if ekstra:
             mimari_satirlar.append((model_adi, ", ".join(f"{k}={v}" for k, v in ekstra.items())))
     if mimari_satirlar:
+        add_paragraph(doc, "Mimariye-özgü yapısal parametreler (her mimarinin kendi tasarımı gereği "
+                            "zaten farklıdır, bir tutarsızlık DEĞİLDİR):", size=9, bold=True, indent=True)
         kv_table(doc, ["Model", "Mimariye-Özgü Parametreler"], mimari_satirlar)
-    else:
-        add_paragraph(doc, "Modele-özgü ek parametre bulunamadı.", size=9, indent=True)
     doc.add_paragraph()
 
     add_heading(doc, "1.2 Ön-Eğitim (Pretrain) Aşaması", level=2)
@@ -436,7 +511,7 @@ def bolum_metrik_tablosu(doc):
         if alt.empty:
             continue
         satirlar = [(r["model"], f"{r['R2']:.3f}", f"{r['MAE']:.4f}", int(r["n_ornek"])) for _, r in alt.iterrows()]
-        add_paragraph(doc, f"{kol} [{TARGET_UNITS.get(kol, '')}]:", size=10, bold=True, indent=True)
+        add_paragraph(doc, f"{_hedef_etiket(kol)}  [sütun adı: {kol}]:", size=10, bold=True, indent=True)
         kv_table(doc, ["Model", "R²", "MAE", "n"], satirlar)
         doc.add_paragraph()
     page_break(doc)
@@ -558,11 +633,17 @@ def bolum_karsilastirma_grafikleri(doc):
 # her modelin KENDİ grafik.py'si panel harfini AYNI sözlükten okur - bu
 # yüzden burada YENİDEN alfabetik sıralama YAPILMAZ (yapılırsa grafik
 # üzerindeki harf ile aşağıdaki açıklama metni arasındaki eşleşme BOZULUR).
-MODEL_SIRASI_RAPOR = MODEL_KLASORLERI
+# Eğitilmemiş modeller (sonuç dosyası olmayanlar) rapora ALINMAZ: aksi halde
+# her figür bloğunun sonuna bir "[Henüz üretilmedi]" yer tutucusu düşüyor, ama
+# panel açıklaması yine de "(k) DimeNetPP ... grafikleri verilmiştir" diyordu -
+# yani açıklama, OLMAYAN bir grafiği varmış gibi gösteriyordu (kullanıcı
+# geri bildirimi sonrası düzeltildi). Kapsam notu §1'de şeffafça verilir.
+def _rapor_modelleri() -> list[str]:
+    return [m for m in MODEL_KLASORLERI if m in _tum_metrikler_json()]
 
 
 def _panel_notu(amac: str) -> str:
-    panel = ", ".join(f"{PANEL_HARFLERI[m]} {m}" for m in MODEL_SIRASI_RAPOR)
+    panel = ", ".join(f"{PANEL_HARFLERI[m]} {m}" for m in _rapor_modelleri())
     return f"{panel} modellerine ait {amac} grafikleri verilmiştir."
 
 
@@ -591,7 +672,8 @@ def bolum_model_detay(doc):
     doc.add_paragraph()
 
     for kol in TARGET_COLUMNS:
-        add_heading(doc, f"6.{TARGET_COLUMNS.index(kol) + 1} Hedef: {kol} [{TARGET_UNITS.get(kol, '')}]", level=2)
+        add_heading(doc, f"6.{TARGET_COLUMNS.index(kol) + 1} Hedef: {_hedef_etiket(kol)}"
+                          f"  [veri sütunu: {kol}]", level=2)
         for sablon, alt_baslik, amac in [
             (f"gercek_vs_tahmin_{{m}}_{kol}.tif", "Predicted vs True", "predicted vs. true"),
             (f"residual_dagilim_{{m}}_{kol}.tif", "Residual Dağılımı", "residual dağılımı"),
@@ -611,7 +693,7 @@ def bolum_model_detay(doc):
                     "_dinamik_esikler). " + (f"Bu hedef için gerçek sınıf sınırları: "
                     f"{esik_str}." if esik_str else ""), size=9, indent=True)
                 doc.add_paragraph()
-            for model_adi in MODEL_SIRASI_RAPOR:
+            for model_adi in _rapor_modelleri():
                 gdir = PROJECT_ROOT / model_adi / "sonuclar" / "grafikler"
                 add_image(doc, gdir / sablon.format(m=model_adi), width_cm=9)
             add_fig_caption(doc, _panel_notu(amac))
@@ -639,14 +721,14 @@ def bolum_model_detay(doc):
         f"aynı boşluk orada SAYISAL olarak da raporlanır).",
         size=9, indent=True)
     doc.add_paragraph()
-    for model_adi in MODEL_SIRASI_RAPOR:
+    for model_adi in _rapor_modelleri():
         gdir = PROJECT_ROOT / model_adi / "sonuclar" / "grafikler"
         add_image(doc, gdir / f"egitim_kaybi_{model_adi}.tif", width_cm=9)
     add_fig_caption(doc, _panel_notu("eğitim/validasyon kayıp eğrisi"))
     page_break(doc)
 
     add_heading(doc, "6.6 Gözeneklilik-Seçicilik Fiziksel Tutarlılık (Xe/Kr)", level=2)
-    for model_adi in MODEL_SIRASI_RAPOR:
+    for model_adi in _rapor_modelleri():
         gdir = PROJECT_ROOT / model_adi / "sonuclar" / "grafikler"
         add_image(doc, gdir / f"pore_secicilik_tutarlilik_{model_adi}.tif", width_cm=9)
     add_fig_caption(doc, _panel_notu("gözeneklilik-seçicilik tutarlılık"))
@@ -661,7 +743,7 @@ def bolum_model_detay(doc):
         "modelin grafiğinin hemen ALTINDA o modele ait gerçek eşleşme tablosu "
         "verilir.", size=9, indent=True)
     doc.add_paragraph()
-    for model_adi in MODEL_SIRASI_RAPOR:
+    for model_adi in _rapor_modelleri():
         gdir = PROJECT_ROOT / model_adi / "sonuclar" / "grafikler"
         add_image(doc, gdir / "feature_importance.tif", width_cm=9)
         fi_txt = gdir / "Feature_Importance.txt"
@@ -677,16 +759,98 @@ def bolum_model_detay(doc):
 # ---------------------------------------------------------------------------
 # §5 XAI
 # ---------------------------------------------------------------------------
+# Her XAI yönteminin NE YAPTIĞI + grafiğinin NASIL OKUNACAĞI (kullanıcı
+# isteği: "her şeyi açık açık yazacağız" — önceden bu bölümde hiçbir açıklama
+# yoktu, grafik başlıkları da ham dosya adıydı: "graphlime_element_onem_
+# i2_uptake_mmol_g" gibi).
+XAI_ACIKLAMALARI = {
+    "GraphLIME": (
+        "GraphLIME (Huang et al., 2020) — YEREL VEKİL MODEL. Tek bir MOF için, "
+        "atomların rastgele alt kümeleri kapatılıp (Bernoulli maskesi) modelin "
+        "tahmininin nasıl değiştiği ölçülür; sonra bu maske→tahmin ilişkisine "
+        "seyrek bir doğrusal model (çapraz-doğrulamalı Lasso) oturtulur. "
+        "Katsayılar = o atomun tahmine YEREL katkısı. Aşağıdaki grafikler bu "
+        "atom katkılarının ELEMENT bazında ortalamasını gösterir: çubuk ne kadar "
+        "uzunsa o element tahmini o kadar güçlü etkiliyor demektir (pozitif = "
+        "tahmini artırıyor, negatif = azaltıyor)."),
+    "Edge_Attribution": (
+        "Edge Attribution — BAĞ/KENAR ÖNEMİ. Gradyan-tabanlı atıf (saliency + "
+        "Integrated Gradients), atomlar arası KENARLARIN (bağların) üzerine "
+        "uygulanır: hangi atom-atom etkileşiminin tahmini ne kadar taşıdığı "
+        "ölçülür. 'bond' grafikleri element-çifti (örn. Cu-O) bazında, 'mesafe' "
+        "grafikleri ise bağ uzunluğu aralıkları bazında ortalama önemi gösterir "
+        "— ikincisi, modelin hangi mesafe ölçeğindeki komşuluklara dayandığını "
+        "(kısa kimyasal bağ mı, uzun gözenek-boşluğu teması mı) ortaya koyar."),
+    "SubgraphX": (
+        "SubgraphX (Yuan et al., 2021) — AÇIKLAYICI ALT-GRAF ARAMA. Monte Carlo "
+        "Ağaç Araması (MCTS) ile, tahmini en iyi açıklayan BAĞLANTILI atom alt "
+        "kümesi ('çekirdek alt-graf') aranır. 'cekirdek_boyut' grafiği bu "
+        "çekirdeklerin kaç atomdan oluştuğunun dağılımını, 'element_onem' "
+        "grafiği ise hangi elementlerin bu açıklayıcı çekirdeklere ne sıklıkta "
+        "girdiğini gösterir (1.0'a yakın = o element neredeyse her zaman "
+        "açıklayıcı çekirdeğin parçası)."),
+    "IntegratedGradients": (
+        "Integrated Gradients (Sundararajan et al., 2017) — SÜREKLİ GİRDİ ATFI. "
+        "Maske kullanmaz: girdinin kendisi (atomların 3B koordinatları ve "
+        "gözeneklilik/kompozisyon özellikleri) bir 'taban çizgisi'nden gerçek "
+        "değere doğru kademeli değiştirilirken gradyanlar integre edilir; bu, "
+        "katkıların toplamının tahmin farkına EŞİT olmasını garanti eder "
+        "(completeness aksiyomu). 'ig_aux_onem' grafikleri sayısal gözeneklilik/"
+        "kompozisyon özelliklerinin, 'ig_element_onem' grafikleri ise atom "
+        "konumlarının element bazında önemini gösterir."),
+}
+
+XAI_GRAFIK_BASLIKLARI = {
+    "graphlime_element_onem": "Element bazında ortalama GraphLIME atom önemi",
+    "edge_attribution_bond": "Element-çifti (bağ türü) bazında ortalama kenar önemi",
+    "edge_attribution_mesafe": "Bağ uzunluğu aralığı bazında ortalama kenar önemi",
+    "subgraphx_cekirdek_boyut": "Açıklayıcı çekirdek alt-grafların atom sayısı dağılımı",
+    "subgraphx_element_onem": "Elementlerin açıklayıcı çekirdek alt-grafa girme oranı",
+    "ig_aux_onem": "Gözeneklilik/kompozisyon özelliklerinin Integrated Gradients önemi",
+    "ig_element_onem": "Element bazında atom-konumu Integrated Gradients önemi",
+}
+
+
+def _xai_baslik(dosya_adi: str) -> str:
+    """Ham dosya adını ('graphlime_element_onem_i2_uptake_mmol_g') insan-okunur
+    bir şekil başlığına çevirir.
+
+    NOT: grafik_ortak.DISPLAY_LABELS etiketleri MATPLOTLIB için yazılmıştır ve
+    LaTeX matematik kipi içerir (r"I$_2$ Uptake"). Word bunu render ETMEZ, ham
+    "$_2$" olarak basardı - bu yüzden burada Unicode alt-simgeye çevrilir."""
+    from grafik_ortak import DISPLAY_LABELS
+    for onek, baslik in sorted(XAI_GRAFIK_BASLIKLARI.items(), key=lambda kv: -len(kv[0])):
+        if dosya_adi.startswith(onek):
+            kalan = dosya_adi[len(onek):].lstrip("_")
+            hedef = DISPLAY_LABELS.get(kalan)
+            if not hedef:
+                return baslik
+            hedef = hedef.replace("$_2$", "₂").replace("$_", "").replace("$", "")
+            return f"{baslik} — hedef: {hedef}"
+    return dosya_adi
+
+
 def bolum_xai(doc):
     add_heading(doc, "7. Açıklanabilir Yapay Zekâ (XAI) Bulguları", level=1)
-    add_paragraph(doc, "Tüm XAI yöntemleri, 11 model arasında en hafif ileri-geçişli olan EGNN "
-                        "üzerine uygulanmıştır (bkz. SISTEM_RAPORU.md §5).", size=10, indent=True)
+    egitilmis = _rapor_modelleri()
+    add_paragraph(doc,
+        f"Dört XAI yönteminin TAMAMI, eğitilmiş {len(egitilmis)} model arasında en "
+        f"hafif ileri-geçişli (en hızlı) mimari olan EGNN üzerine uygulanmıştır — "
+        f"XAI yöntemleri model başına binlerce ileri-geçiş gerektirdiğinden, tek "
+        f"ve tutarlı bir hedef model seçilmiştir (bkz. SISTEM_RAPORU.md §5). "
+        f"Dolayısıyla bu bölümdeki bulgular EGNN'in öğrendiklerini açıklar, tüm "
+        f"modellerin ortalamasını değil.", size=10, indent=True)
+    doc.add_paragraph()
     for xai_adi in XAI_KLASORLERI:
         add_heading(doc, xai_adi, level=2)
+        aciklama = XAI_ACIKLAMALARI.get(xai_adi)
+        if aciklama:
+            add_paragraph(doc, aciklama, size=9, indent=True)
+            doc.add_paragraph()
         gdir = PROJECT_ROOT / xai_adi / "sonuclar" / "grafikler"
         if gdir.exists() and any(gdir.glob("*.tif")):
             for dosya in sorted(gdir.glob("*.tif")):
-                add_image(doc, dosya, width_cm=11, caption=dosya.stem)
+                add_image(doc, dosya, width_cm=11, caption=_xai_baslik(dosya.stem))
         else:
             add_paragraph(doc, f"[Henüz üretilmedi: {xai_adi}/sonuclar/grafikler/ — önce "
                                 f"python -m {xai_adi}.run_* ve python -m {xai_adi}.grafik çalıştırın.]",
@@ -699,8 +863,16 @@ def main() -> None:
     style = doc.styles["Normal"]; style.font.name = "Calibri"; style.font.size = Pt(10)
 
     add_heading(doc, "MOF Radyoaktif Gaz Adsorpsiyonu — Sonuç Raporu", level=0)
-    add_paragraph(doc, "Xe/Kr Adsorpsiyon Kapasitesi + Xe/Kr Seçicilik + I₂ Adsorpsiyon Kapasitesi — "
-                        "11 GNN Mimarisi + 4 XAI Yöntemi (pooled out-of-fold sonuçları)", size=12, bold=False)
+    # Alt başlıktaki model sayısı ELLE yazılmaz: eğitilmemiş bir mimariyi
+    # "sonuçları var" gibi göstermemek için GERÇEK sonuç üretmiş model
+    # sayısından türetilir (bkz. §1 kapsam notu).
+    n_egitilmis = len(_rapor_modelleri())
+    n_implemente = len(MODEL_KLASORLERI)
+    mimari_ifade = (f"{n_egitilmis} GNN Mimarisi" if n_egitilmis == n_implemente
+                    else f"{n_egitilmis} GNN Mimarisi (depoda {n_implemente} implemente)")
+    add_paragraph(doc, f"Xe/Kr Adsorpsiyon Kapasitesi + Xe/Kr Seçicilik + I₂ Adsorpsiyon Kapasitesi — "
+                        f"{mimari_ifade} + {len(XAI_KLASORLERI)} XAI Yöntemi "
+                        f"(pooled out-of-fold sonuçları)", size=12, bold=False)
     doc.add_paragraph()
 
     bolum_veri_kaynagi(doc)

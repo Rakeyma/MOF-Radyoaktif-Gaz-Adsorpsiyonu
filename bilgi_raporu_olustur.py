@@ -137,14 +137,17 @@ def main() -> None:
 
     h(doc, "4. Hyperparameters (Code Defaults)")
     para(doc, "This is a STATIC methodology document, so the values below are the CODE "
-              "DEFAULTS (egitim_ortak.py) shared by all 11 models, imported programmatically "
-              "(never hand-typed) so this text cannot drift from the source code. Every "
-              "default can be overridden per-run via an environment variable without "
-              "touching the code (e.g. for a fast smoke-test). The hyperparameters ACTUALLY "
-              "used in a given run (which may differ from these defaults if an override was "
-              "set) are auto-documented — read live from that run's "
-              "<Model>/sonuclar/metrikler.json — in §1 of the companion dynamic report "
-              "'MOF_Radyoaktif_Gaz_Adsorpsiyonu_Raporu.docx'.", size=9)
+              "DEFAULTS (egitim_ortak.py), imported programmatically (never hand-typed) so "
+              "this text cannot drift from the source code. Every default can be overridden "
+              "per-run via an environment variable without touching the code (e.g. for a fast "
+              "smoke-test), and an override may be applied to one model but not another — so "
+              "these defaults must NOT be read as 'what every model actually used'. The "
+              "hyperparameters ACTUALLY used in a given run are auto-documented — read live "
+              "from each model's <Model>/sonuclar/metrikler.json, with any value that differs "
+              "between models broken out per-model — in §1 of the companion dynamic report "
+              "'MOF_Radyoaktif_Gaz_Adsorpsiyonu_Raporu.docx'. That report is also the only "
+              "place that states which architectures were actually TRAINED in a given run; "
+              "this document describes every architecture IMPLEMENTED in the repository.", size=9)
     doc.add_paragraph()
     for label, val, env_var in [
         ("K (K-Fold count)", K_FOLDS, "KFOLD_OVERRIDE"),
@@ -195,6 +198,13 @@ def main() -> None:
         ("Permutation Importance (ΔMAE)", "—", "A feature group's values are randomly "
          "shuffled across samples and the resulting MAE degradation is measured; larger "
          "positive ΔMAE = the model depends on that feature group more."),
+        ("Confusion-matrix classes", "—", "These are regression targets, so the confusion "
+         "matrices do NOT use fixed physical thresholds. Classes are derived from each "
+         "target's own QUARTILE distribution of true values (Q1/median/Q3), giving 4 "
+         "equal-sized relative bins: <Q1 / Q1-median / median-Q3 / >Q3 ('low / mid-low / "
+         "mid-high / high'). They are recomputed per target and per model, so the class "
+         "boundaries differ between figures — each figure's actual numeric boundaries are "
+         "printed in §6 of the dynamic report (see grafik_ortak._dinamik_esikler)."),
         ("Feature-importance chart Roman numerals (I, II, III, ...)", "—", "Y-axis labels "
          "are assigned by IMPORTANCE RANK (most to least important), so which numeral maps "
          "to which feature group differs per model/run. The exact per-model mapping is "
@@ -237,7 +247,12 @@ def main() -> None:
 
     h(doc, "7. Four XAI Methods (applied to EGNN — lightest model)")
     for line in [
-        "GraphLIME — local linear (Lasso) surrogate over Bernoulli atom masks, per target.",
+        "GraphLIME — local linear surrogate over Bernoulli atom masks, fitted per target with a "
+        "CROSS-VALIDATED Lasso (LassoCV). The regularization strength is selected per sample from "
+        "the data rather than fixed: with a hardcoded alpha, the masking-induced prediction deltas "
+        "of these large MOFs (72-172 atoms, whose per-atom effect is heavily diluted by 4 message-"
+        "passing layers + LayerNorm) fell below the penalty threshold and every coefficient "
+        "collapsed to exactly zero, producing empty explanations.",
         "Edge Attribution — vanilla gradient saliency + Integrated Gradients on an edge (RBF-output) mask.",
         "SubgraphX — Monte Carlo Tree Search over connected atom subsets, UCT selection, multi-target "
         "standardized-space reward.",
