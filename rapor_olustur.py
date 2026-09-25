@@ -201,16 +201,92 @@ def bolum_veri_kaynagi(doc):
         "bkz. eslesme_4_dataset_birlestirici.py).",
     ])
     doc.add_paragraph()
-    add_paragraph(doc,
-        "Xe/Kr/I₂ hedef etiketleri KARMA kaynaklıdır: (a) NLP_LITERATURE — "
-        "CrossRef/arXiv'den regex ile çıkarılmış GERÇEK literatür değerleri "
-        "(nadir, sadece augment edilmemiş orijinal örneklere uygulanır); "
-        "(b) PROXY_PORE_CORRELATION — Sikora et al. (2012)'nin boyut-eleme "
-        "ilkesine dayanan, açıkça vekil/tahmini bir korelasyon. Her satırın "
-        "kaynağı 'label_source_<hedef>' sütununda şeffaf şekilde işaretlidir; "
-        "aşağıdaki R²/MAE değerleri bu KARIŞIK etiket kalitesiyle birlikte "
-        "yorumlanmalıdır.", size=9, indent=True)
+    _bolum_etiket_kokeni(doc)
     page_break(doc)
+
+
+def _etiket_kaynak_dagilimi() -> dict[str, dict[str, int]]:
+    """Nihai veri setindeki 'label_source_<hedef>' sütunlarının GERÇEK
+    dağılımını okur. (Önceki sürüm etiketlerin 'KARMA kaynaklı' olduğunu
+    SABİT metin olarak iddia ediyordu; gerçekte bu koşumda etiketlerin
+    %100'ü PROXY_PORE_CORRELATION çıktı - iddia yanlıştı. Artık veriden
+    okunur.)"""
+    from paths import GAS_FINETUNE_CSV
+    if not GAS_FINETUNE_CSV.exists():
+        return {}
+    df = pd.read_csv(GAS_FINETUNE_CSV, low_memory=False)
+    dagilim = {}
+    for kol in TARGET_COLUMNS:
+        sut = f"label_source_{kol}"
+        if sut in df.columns:
+            dagilim[kol] = df[sut].value_counts().to_dict()
+    return dagilim
+
+
+def _bolum_etiket_kokeni(doc):
+    dagilim = _etiket_kaynak_dagilimi()
+    if not dagilim:
+        add_paragraph(doc, "[Henüz üretilmedi: nihai veri seti okunamadı — etiket köken "
+                            "dağılımı raporlanamıyor.]", size=9, indent=True)
+        return
+
+    add_heading(doc, "0.1 Hedef Etiketlerin Kökeni (KRİTİK)", level=2)
+    satirlar = []
+    for kol, sayim in dagilim.items():
+        toplam = sum(sayim.values())
+        satirlar.append((_hedef_etiket(kol),
+                          ", ".join(f"{k}: {v} (%{100 * v / toplam:.0f})"
+                                    for k, v in sorted(sayim.items(), key=lambda kv: -kv[1]))))
+    kv_table(doc, ["Hedef", "Etiket Kaynağı Dağılımı"], satirlar)
+    doc.add_paragraph()
+
+    tum_kaynaklar = set()
+    for sayim in dagilim.values():
+        tum_kaynaklar.update(sayim.keys())
+    sadece_proxy = tum_kaynaklar == {"PROXY_PORE_CORRELATION"}
+
+    if sadece_proxy:
+        add_paragraph(doc,
+            "UYARI — SONUÇLARIN YORUMLANMASI İÇİN BELİRLEYİCİDİR: bu koşumda "
+            "hedef etiketlerin TAMAMI (%100) 'PROXY_PORE_CORRELATION' "
+            "kaynaklıdır. Yani etiketler deneysel ölçüm DEĞİLDİR, GCMC "
+            "simülasyonu DEĞİLDİR, literatürden alınmış DEĞİLDİR: gözeneklilik "
+            "tanımlayıcılarından (PLD, gözenek hacmi, açık metal bölgesi, "
+            "fonksiyonel grup) kapalı-form bir formülle ÜRETİLMİŞTİR (formülün "
+            "fiziksel motivasyonu Sikora et al. 2012'nin boyut-eleme ilkesidir, "
+            "ancak ürettiği SAYILAR gerçek değildir; üzerine lognormal gürültü "
+            "eklenmiştir). NLP literatür madenciliği bu koşumda kullanılabilir "
+            "hiçbir etiket sağlayamamıştır.", size=9, indent=True)
+        doc.add_paragraph()
+        add_paragraph(doc,
+            "DÖNGÜSELLİK: etiket formülünün girdileri olan pld_A, "
+            "pore_volume_cm3_g, open_metal_site ve has_functional_group "
+            "değişkenlerinin DÖRDÜ DE modele yardımcı (aux) GİRDİ özelliği "
+            "olarak verilmektedir. Dolayısıyla model, kendi girdilerinden "
+            "hesaplanan bir formülü geri çözmeyi öğrenmektedir; R² tavanı "
+            "fiziksel öğrenme kapasitesiyle değil, etikete enjekte edilen "
+            "gürültüyle belirlenir. Bunun izleri sonuçlarda görülebilir: §4.3'te "
+            "'Pore Geometry' ΔMAE'si 'Crystal Structure'ın ~70 katıdır ve "
+            "§4.2'de modelin ürettiği korelasyon (r≈-0.99), gürültülü gerçek "
+            "etiketlerinkinden (r≈-0.82) DAHA temizdir.", size=9, indent=True)
+        doc.add_paragraph()
+        add_paragraph(doc,
+            f"SONUÇ: bu rapordaki R²/MAE değerleri, makine öğrenmesi boru "
+            f"hattının (eğitilen {len(_rapor_modelleri())} mimari, transfer "
+            f"öğrenme, K-Fold, {len(XAI_KLASORLERI)} XAI yöntemi) uçtan uca "
+            "DOĞRU ÇALIŞTIĞINI gösteren bir ALTYAPI DOĞRULAMASIDIR. Gerçek "
+            "Xe/Kr/I₂ adsorpsiyon tahmin başarısını GÖSTERMEZ ve bir yayında "
+            "malzeme-keşfi sonucu olarak sunulamaz. Gerçek etiket kaynağına "
+            "(yayınlanmış GCMC izotermleri veya RASPA simülasyonu) geçilmesi "
+            "gerekmektedir — bkz. depodaki VERI_KAYNAGI_VE_SINIRLAMALAR.md.",
+            size=9, bold=True, indent=True)
+    else:
+        add_paragraph(doc,
+            "Etiketler karma kaynaklıdır (yukarıdaki tabloya bakınız). "
+            "'PROXY_PORE_CORRELATION' kaynaklı satırlar deneysel/simülasyon "
+            "verisi DEĞİL, gözeneklilik tanımlayıcılarından türetilmiş vekil "
+            "değerlerdir; aşağıdaki R²/MAE değerleri bu karışık etiket "
+            "kalitesiyle birlikte yorumlanmalıdır.", size=9, indent=True)
 
 
 # ---------------------------------------------------------------------------

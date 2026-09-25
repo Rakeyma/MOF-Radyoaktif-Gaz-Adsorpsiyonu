@@ -14,6 +14,31 @@ Gradients**), **Transfer Learning** (QMOF-benzeri proxy veri setinde
 bileşenli veri boru hattı, her modelin nasıl çalıştığı, XAI yöntemleri,
 çalıştırma komutları ve dürüst sınırlamalar orada anlatılmaktadır.
 
+---
+
+## ⚠️ Veri Durumu: hedef etiketler şu an %100 SENTETİKTİR
+
+Bu depodaki koşumda **kristal yapılar gerçektir** (Hugging Face
+`jablonkagroup/core_mof_no_topo`, CoRE-MOF türevi), ancak modellerin
+tahmin etmeyi öğrendiği **4 hedefin (Xe/Kr/I₂ kapasitesi, Xe/Kr
+seçicilik) etiketlerinin tamamı sentetiktir** — gözeneklilik
+tanımlayıcılarından kapalı-form bir formülle üretilmiştir (2100/2100
+satır `PROXY_PORE_CORRELATION`; NLP literatür madenciliği kullanılabilir
+etiket sağlayamamıştır).
+
+Üstelik bu formülün girdileri (`pld_A`, `pore_volume_cm3_g`,
+`open_metal_site`, `has_functional_group`) modele **girdi özelliği olarak
+da verilmektedir** — yani model kendi girdilerinden bir formülü geri
+çözmektedir.
+
+Bu nedenle raporlardaki **R² ≈ 0.93 skorları, gerçek Xe/Kr adsorpsiyon
+tahmin başarısı DEĞİLDİR**; makine öğrenmesi altyapısının uçtan uca doğru
+çalıştığının doğrulamasıdır ve malzeme-keşfi sonucu olarak sunulamaz.
+
+**Her veri parçasının kaynağı, ne kadarının sentetik olduğu ve bunu
+gerçek bir çalışmaya dönüştürmek için gerekenler:
+[`VERI_KAYNAGI_VE_SINIRLAMALAR.md`](VERI_KAYNAGI_VE_SINIRLAMALAR.md)**
+
 Hızlı başlangıç:
 
 ```bash
