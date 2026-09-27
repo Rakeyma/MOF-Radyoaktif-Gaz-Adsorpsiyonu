@@ -1,0 +1,12 @@
+(a) = gravimetric_surface_area_m2_g
+(b) = density_g_cm3
+(c) = mean_atomic_radius_A
+(d) = mean_electronegativity_diff
+(e) = metal_fraction
+(f) = volumetric_surface_area_m2_cm3
+(g) = pore_volume_cm3_g
+(h) = nsites
+(i) = mean_atomic_number
+(j) = void_fraction
+(k) = lcd_A
+(l) = pld_A

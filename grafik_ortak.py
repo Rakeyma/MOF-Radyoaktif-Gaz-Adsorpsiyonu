@@ -59,14 +59,29 @@ sns.set_theme(style="whitegrid", palette="deep")
 # Eksen yazılarının büyük ve BOLD olması için global ayarlar (600 dpi .tif +
 # .png ikili kayıt, İngilizce eksen/metin - tüm figürler bu ayarları miras
 # alır; KULLANICI GEREKSİNİMİ - bu bloğa dokunulmamalıdır).
+# KULLANICI İSTEĞİ: "grafik size'larının büyük olmasını istiyorum".
+# TEK bir ölçek sabiti: tüm figsize'lar boyut() üzerinden geçtiği için, grafik
+# boyutunu değiştirmek isteyen BU SAYIYI değiştirir - 20 ayrı dosyadaki
+# figsize'ı tek tek düzeltmek gerekmez. Yazı boyutları da birlikte büyütülür,
+# aksi halde büyüyen tuvalde yazılar orantısız KÜÇÜK görünürdü.
+FIG_OLCEK = 1.45
+
+
+def boyut(genislik: float, yukseklik: float) -> tuple[float, float]:
+    """figsize'ı ortak ölçekle büyütür."""
+    return (genislik * FIG_OLCEK, yukseklik * FIG_OLCEK)
+
+
+PANEL_FONT = 14 * FIG_OLCEK
+
 plt.rcParams.update({
-    'axes.labelsize': 14,
+    'axes.labelsize': 14 * FIG_OLCEK,
     'axes.labelweight': 'bold',
-    'axes.titlesize': 13,
+    'axes.titlesize': 13 * FIG_OLCEK,
     'axes.titleweight': 'bold',
-    'xtick.labelsize': 12,
-    'ytick.labelsize': 12,
-    'legend.fontsize': 10,
+    'xtick.labelsize': 12 * FIG_OLCEK,
+    'ytick.labelsize': 12 * FIG_OLCEK,
+    'legend.fontsize': 10 * FIG_OLCEK,
     'font.weight': 'bold',
     'font.family': 'DejaVu Sans',
     'savefig.dpi': 600,
@@ -158,20 +173,69 @@ def set_panel(etiket: str) -> None:
 
 
 def panel_ekle(fig: plt.Figure) -> None:
+    """Panel etiketini ((a), (b), ...) grafiğin SOL ÜST köşesine basar.
+
+    KULLANICI İSTEĞİ: önceden sağ-üst köşedeydi; toplu (çok panelli) şekillerde
+    panel harfinin SOLDA olması istendi - akademik şekillerde de yaygın olan
+    budur, çünkü okuma sırası soldan sağa ilerler ve panel harfi ilk görülen
+    öğe olur."""
     if not _current_panel:
         return
     axs = fig.get_axes()
     if axs:
         axs[0].annotate(
             _current_panel,
-            xy=(1, 1), xycoords="axes fraction",
+            xy=(0, 1), xycoords="axes fraction",
             xytext=(0, 5), textcoords="offset points",
-            ha="right", va="bottom",
-            fontsize=14, fontweight="bold",
+            ha="left", va="bottom",
+            fontsize=PANEL_FONT, fontweight="bold",
         )
     else:
-        fig.text(0.98, 0.99, _current_panel,
-                  ha="right", va="top", fontsize=14, fontweight="bold")
+        fig.text(0.02, 0.99, _current_panel,
+                  ha="left", va="top", fontsize=PANEL_FONT, fontweight="bold")
+
+
+# ---------------------------------------------------------------------------
+# UZUN Y-EKSENİ ETİKETLERİNİ HARFLENDİRME
+# ---------------------------------------------------------------------------
+# KULLANICI İSTEĞİ: "sol tarafta uzun yazılar olanları harflendir ... en altta
+# a b c'nin ne olduğunu açıkla". Uzun özellik adları (orn.
+# 'volumetric_surface_area_m2_cm3') y-ekseninde çubukları sıkıştırıyor ve
+# grafiği okunmaz hale getiriyordu. Artık bu etiketler (a), (b), (c)...
+# harfleriyle değiştirilir; harf->ad eşleşmesi grafiğin YANINA bir .txt olarak
+# yazılır ve rapor bunu şeklin ALTINDA bir tablo olarak basar.
+UZUN_ETIKET_ESIGI = 14  # bu karakterden uzun etiketler harflendirilir
+
+_HARFLER = [f"({c})" for c in "abcdefghijklmnopqrstuvwxyz"]
+
+
+def harflendir_uzun_etiketler(ax, etiketler: list[str], cikti_yolu,
+                               eksen: str = "y") -> dict[str, str] | None:
+    """Etiketlerden HERHANGİ BİRİ uzunsa hepsini (a),(b),(c)... ile değiştirir
+    ve eşleşmeyi '<grafik_adi>_etiketler.txt' dosyasına yazar.
+
+    Dondurur: {harf: orijinal_etiket} veya harflendirme gerekmediyse None
+    (kısa etiketlerde - orn. element sembolleri - dokunulmaz)."""
+    from pathlib import Path as _Path
+
+    if not etiketler or max(len(str(e)) for e in etiketler) <= UZUN_ETIKET_ESIGI:
+        return None
+    if len(etiketler) > len(_HARFLER):
+        return None  # 26'dan fazla etiket - harf yetmez, dokunma
+
+    harfler = _HARFLER[:len(etiketler)]
+    if eksen == "y":
+        ax.set_yticks(range(len(etiketler)))
+        ax.set_yticklabels(harfler)
+    else:
+        ax.set_xticks(range(len(etiketler)))
+        ax.set_xticklabels(harfler)
+
+    eslesme = dict(zip(harfler, [str(e) for e in etiketler]))
+    yol = _Path(cikti_yolu)
+    yol.with_name(yol.stem + "_etiketler.txt").write_text(
+        "\n".join(f"{h} = {ad}" for h, ad in eslesme.items()), encoding="utf-8")
+    return eslesme
 
 
 def _dinamik_esikler(degerler: np.ndarray) -> list[float]:
@@ -203,7 +267,7 @@ def tahmin_dogru_grafigi(df: pd.DataFrame, gercek_kolon: str, tahmin_kolon: str,
                           kol: str, baslik: str, cikti_yolu) -> None:
     alt = df.dropna(subset=[gercek_kolon, tahmin_kolon])
     gercek, tahmin = alt[gercek_kolon].values, alt[tahmin_kolon].values
-    fig, ax = plt.subplots(figsize=(6, 6))
+    fig, ax = plt.subplots(figsize=boyut(6, 6))
     ax.scatter(gercek, tahmin, s=10, alpha=0.35, edgecolors="none", color="steelblue")
     lim_min, lim_max = min(gercek.min(), tahmin.min()), max(gercek.max(), tahmin.max())
     pay = 0.05 * (lim_max - lim_min + 1e-9)
@@ -221,7 +285,7 @@ def tahmin_dogru_grafigi(df: pd.DataFrame, gercek_kolon: str, tahmin_kolon: str,
 def ciz_fold_sacilim(df: pd.DataFrame, gercek_kolon: str, tahmin_kolon: str,
                       kol: str, baslik: str, cikti_yolu,
                       fold_kolon: str = "fold") -> None:
-    """fold renkli scatter - tahmin_dogru_grafigi ile aynı figsize=(6,6) ölçeği.
+    """fold renkli scatter - tahmin_dogru_grafigi ile aynı figsize=boyut(6, 6) ölçeği.
     NaN (etiketsiz) satirlar bu hedef icin OTOMATIK atlanir (seyrek coklu-
     hedef etiketleme - bkz. egitim_ortak.maskeli_mse)."""
     from sklearn.metrics import r2_score, mean_absolute_error
@@ -234,7 +298,7 @@ def ciz_fold_sacilim(df: pd.DataFrame, gercek_kolon: str, tahmin_kolon: str,
     gercek = alt_all[gercek_kolon].values
     tahmin = alt_all[tahmin_kolon].values
 
-    fig, ax = plt.subplots(figsize=(6, 6))
+    fig, ax = plt.subplots(figsize=boyut(6, 6))
     for fold, renk in zip(foldlar, renkler):
         alt = alt_all[alt_all[fold_kolon] == fold] if fold_kolon in alt_all.columns else alt_all
         ax.scatter(alt[gercek_kolon], alt[tahmin_kolon],
@@ -248,11 +312,11 @@ def ciz_fold_sacilim(df: pd.DataFrame, gercek_kolon: str, tahmin_kolon: str,
     r2 = r2_score(gercek, tahmin) if np.std(gercek) > 1e-10 else float("nan")
     mae = mean_absolute_error(gercek, tahmin)
     ax.text(0.05, 0.93, f"R²={r2:.3f}, MAE={mae:.3f}", transform=ax.transAxes,
-            fontsize=11, fontweight="bold",
+            fontsize=11 * FIG_OLCEK, fontweight="bold",
             bbox=dict(boxstyle="round", fc="white", alpha=0.85))
     ax.set_xlabel(f"True {_etiket(kol)}")
     ax.set_ylabel(f"Predicted {_etiket(kol)}")
-    ax.legend(markerscale=2, fontsize=9, loc="lower right")
+    ax.legend(markerscale=2, fontsize=9 * FIG_OLCEK, loc="lower right")
     ax.set_aspect("equal", adjustable="box")
     fig.tight_layout()
     panel_ekle(fig)
@@ -284,7 +348,7 @@ def residual_dagilim_grafigi(df: pd.DataFrame, gercek_kolon: str, tahmin_kolon: 
     rng = bin_edges[-1] - bin_edges[0] + 1e-9
     xlim_l = bin_edges[0] - rng * 0.18
     xlim_r = bin_edges[-1] + rng * 0.18
-    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    fig, ax = plt.subplots(figsize=boyut(6.5, 4.5))
     ax.hist(data, bins=bin_edges, color="steelblue", alpha=0.85, edgecolor="white")
     ax.axvline(0, color="red", linestyle="--", lw=1.5)
     ax.set_xlim(xlim_l, xlim_r)
@@ -298,10 +362,10 @@ def residual_dagilim_grafigi(df: pd.DataFrame, gercek_kolon: str, tahmin_kolon: 
     if counts[tepe_idx] > 0:
         tepe_x = (bin_edges[tepe_idx] + bin_edges[tepe_idx + 1]) / 2
         ax.text(tepe_x, counts[tepe_idx], f"{int(counts[tepe_idx])}",
-                 ha="center", va="bottom", fontsize=10, fontweight="bold")
+                 ha="center", va="bottom", fontsize=10 * FIG_OLCEK, fontweight="bold")
         ax.set_ylim(top=counts.max() * 1.12)
     ax.text(0.02, 0.95, f"mean={residual_ham.mean():.3g}\nstd={residual_ham.std():.3g}",
-            transform=ax.transAxes, va="top", fontsize=12, fontweight="bold",
+            transform=ax.transAxes, va="top", fontsize=12 * FIG_OLCEK, fontweight="bold",
             bbox=dict(boxstyle="round", fc="white", alpha=0.85))
     fig.tight_layout()
     panel_ekle(fig)
@@ -320,10 +384,10 @@ def confusion_matrix_grafigi(df: pd.DataFrame, gercek_kolon: str, tahmin_kolon: 
     y_pred = np.digitize(alt[tahmin_kolon].values, esikler)
     cm = confusion_matrix(y_true, y_pred, labels=list(range(len(sinif_etiketleri))))
 
-    fig, ax = plt.subplots(figsize=(5.5, 5))
+    fig, ax = plt.subplots(figsize=boyut(5.5, 5))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", cbar=False, square=True,
                 xticklabels=sinif_etiketleri, yticklabels=sinif_etiketleri,
-                annot_kws={"fontsize": 11, "fontweight": "bold"}, ax=ax)
+                annot_kws={"fontsize": 11 * FIG_OLCEK, "fontweight": "bold"}, ax=ax)
     plt.setp(ax.get_xticklabels(), rotation=30, ha="right")
     plt.setp(ax.get_yticklabels(), rotation=0)
 
@@ -363,7 +427,7 @@ def gozeneklilik_secicilik_tutarlilik_grafigi(df: pd.DataFrame, etiket: str, bas
     r_gercek, _ = pearsonr(dx, gercek)
     r_tahmin, _ = pearsonr(dx, tahmin)
 
-    fig, ax = plt.subplots(figsize=(6, 6))
+    fig, ax = plt.subplots(figsize=boyut(6, 6))
     ax.scatter(dx, gercek, s=18, alpha=0.4, color="steelblue", label="True Selectivity")
     ax.scatter(dx, tahmin, s=18, alpha=0.4, color="darkorange", label="Predicted Selectivity")
 
@@ -376,9 +440,9 @@ def gozeneklilik_secicilik_tutarlilik_grafigi(df: pd.DataFrame, etiket: str, bas
     ax.set_ylabel("Xe/Kr Selectivity (-)")
     ax.text(0.95, 0.95,
             f"r(True)={r_gercek:.3f}\nr(Pred)={r_tahmin:.3f}",
-            transform=ax.transAxes, va="top", ha="right", fontsize=12, fontweight="bold",
+            transform=ax.transAxes, va="top", ha="right", fontsize=12 * FIG_OLCEK, fontweight="bold",
             bbox=dict(boxstyle="round", fc="white", alpha=0.85))
-    ax.legend(loc="lower left", fontsize=10)  # kullanici geri bildirimi: sol-ust'teki r(True)/r(Pred) kutusuyla cakismasin diye sol-alta alindi
+    ax.legend(loc="lower left", fontsize=10 * FIG_OLCEK)  # kullanici geri bildirimi: sol-ust'teki r(True)/r(Pred) kutusuyla cakismasin diye sol-alta alindi
 
     fig.tight_layout()
     panel_ekle(fig)
@@ -391,7 +455,7 @@ def egitim_kaybi_grafigi(gecmis_dfs: dict[int, pd.DataFrame], etiket: str, basli
                           kayip_kolon_val: str = "val_loss") -> None:
     """Eğitim/validasyon kayıp eğrileri - her fold için ayrı çizgi (train:
     düz, val: kesik)."""
-    fig, ax = plt.subplots(figsize=(7, 5))
+    fig, ax = plt.subplots(figsize=boyut(7, 5))
     renkler = plt.cm.tab10(np.linspace(0, 0.9, max(len(gecmis_dfs), 1)))
     for (fold_no, gdf), renk in zip(sorted(gecmis_dfs.items()), renkler):
         ax.plot(gdf["epoch"], gdf[kayip_kolon_train], color=renk, lw=1.6,
@@ -401,7 +465,7 @@ def egitim_kaybi_grafigi(gecmis_dfs: dict[int, pd.DataFrame], etiket: str, basli
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss")
     ax.set_yscale("log")
-    ax.legend(fontsize=8, ncol=2)
+    ax.legend(fontsize=8 * FIG_OLCEK, ncol=2)
     fig.tight_layout()
     panel_ekle(fig)
     kaydet(fig, cikti_yolu)
@@ -412,8 +476,11 @@ def permutation_importance_grafigi(skorlar: dict, etiket: str, baslik: str, cikt
     import json as _json
     from pathlib import Path as _Path
 
-    _ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
-              "XI", "XII", "XIII", "XIV", "XV"]
+    # KULLANICI ISTEGI: y-eksenindeki uzun ozellik-grubu adlari HARFLERLE
+    # gosterilir ((a), (b), ...); harf->ad eslesmesi Feature_Importance.txt'ye
+    # yazilir ve rapor bunu seklin ALTINDA tablo olarak basar. (Onceden Roma
+    # rakami kullaniliyordu; kullanici harf istedi.)
+    _ETIKETLER = _HARFLER
 
     _Path(cikti_yolu).with_name("perm_importance.json").write_text(
         _json.dumps(skorlar, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -428,13 +495,13 @@ def permutation_importance_grafigi(skorlar: dict, etiket: str, baslik: str, cikt
     sirali = sorted(zip(degerler, isimler), reverse=True)
     deg_s = [d for d, _ in sirali]
     ad_s = [a for _, a in sirali]
-    roman = _ROMAN[:len(ad_s)]
+    harfler = _ETIKETLER[:len(ad_s)]
 
-    fig, ax = plt.subplots(figsize=(5.5, 4))
-    ax.barh(roman, deg_s, color="darkorange")
+    fig, ax = plt.subplots(figsize=boyut(5.5, 4))
+    ax.barh(harfler, deg_s, color="darkorange")
     ax.set_xlabel("Importance (ΔMAE)")
     for i, v in enumerate(deg_s):
-        ax.text(v, i, f" {v:.4f}", va="center", fontsize=9)
+        ax.text(v, i, f" {v:.4f}", va="center", fontsize=9 * FIG_OLCEK)
     pos_vals = [v for v in deg_s if v > 0]
     if pos_vals:
         ax.set_xlim(right=max(pos_vals) * 1.40)
@@ -442,7 +509,7 @@ def permutation_importance_grafigi(skorlar: dict, etiket: str, baslik: str, cikt
         ax.ticklabel_format(style="sci", axis="x", scilimits=(-2, 2), useMathText=True)
 
     _Path(cikti_yolu).with_name("Feature_Importance.txt").write_text(
-        "\n".join(f"{r} = {a}" for r, a in zip(roman, ad_s)), encoding="utf-8"
+        "\n".join(f"{h} = {a}" for h, a in zip(harfler, ad_s)), encoding="utf-8"
     )
 
     fig.tight_layout()

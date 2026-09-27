@@ -26,15 +26,17 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-plt.rcParams.update({
-    'axes.labelsize': 14, 'axes.labelweight': 'bold', 'axes.titleweight': 'bold',
-    'xtick.labelsize': 11, 'ytick.labelsize': 11, 'font.weight': 'bold',
-    'legend.fontsize': 10, 'savefig.dpi': 600,
-})
-
 from paths import PROJECT_ROOT, MODEL_KLASORLERI
 from egitim_ortak import TARGET_COLUMNS
-from grafik_ortak import KISA_ETIKETLER
+from grafik_ortak import KISA_ETIKETLER, boyut, FIG_OLCEK
+
+# Yazi boyutlari da figsize ile AYNI olcekte buyutulur (grafik_ortak.FIG_OLCEK) -
+# aksi halde buyuyen tuvalde yazilar oransal olarak kucuk kalirdi.
+plt.rcParams.update({
+    'axes.labelsize': 14 * FIG_OLCEK, 'axes.labelweight': 'bold', 'axes.titleweight': 'bold',
+    'xtick.labelsize': 11 * FIG_OLCEK, 'ytick.labelsize': 11 * FIG_OLCEK, 'font.weight': 'bold',
+    'legend.fontsize': 10 * FIG_OLCEK, 'savefig.dpi': 600,
+})
 
 CSV_YOLU = PROJECT_ROOT / "model_karsilastirma_sonuclari.csv"
 GRAFIK_DIR = PROJECT_ROOT / "model_karsilastirma_grafikler"
@@ -47,9 +49,10 @@ def _kaydet(fig, path: Path) -> None:
     plt.close(fig)
 
 
-def _panel_etiket(ax, harf: str, fontsize: float = 16.0) -> None:
-    ax.text(0.98, 1.03, f"({harf})", transform=ax.transAxes,
-            ha="right", va="bottom", fontsize=fontsize, fontweight="bold")
+def _panel_etiket(ax, harf: str, fontsize: float = 16.0 * FIG_OLCEK) -> None:
+    """Panel harfi SOL ust kosede (kullanici istegi - bkz. grafik_ortak.panel_ekle)."""
+    ax.text(0.0, 1.03, f"({harf})", transform=ax.transAxes,
+            ha="left", va="bottom", fontsize=fontsize, fontweight="bold")
 
 
 def _renk_listesi(n: int, cmap: str = "RdYlGn", ters: bool = False) -> list:
@@ -59,11 +62,11 @@ def _renk_listesi(n: int, cmap: str = "RdYlGn", ters: bool = False) -> list:
 
 def r2_karsilastirma_grafigi(df: pd.DataFrame) -> None:
     df = df.sort_values("R2", ascending=True)
-    fig, ax = plt.subplots(figsize=(7, 6))
+    fig, ax = plt.subplots(figsize=boyut(7, 6))
     ax.barh(df["model"], df["R2"], color=_renk_listesi(len(df)))
     ax.set_xlabel("R²")
     for i, v in enumerate(df["R2"]):
-        ax.text(v, i, f" {v:.3f}", va="center", fontsize=9, fontweight="bold")
+        ax.text(v, i, f" {v:.3f}", va="center", fontsize=9 * FIG_OLCEK, fontweight="bold")
     if df["R2"].notna().any():
         ax.set_xlim(right=df["R2"].max() * 1.15 if df["R2"].max() > 0 else 0.1)
     _panel_etiket(ax, "a")
@@ -73,11 +76,11 @@ def r2_karsilastirma_grafigi(df: pd.DataFrame) -> None:
 
 def mae_karsilastirma_grafigi(df: pd.DataFrame) -> None:
     df = df.sort_values("MAE", ascending=False)
-    fig, ax = plt.subplots(figsize=(7, 6))
+    fig, ax = plt.subplots(figsize=boyut(7, 6))
     ax.barh(df["model"], df["MAE"], color=_renk_listesi(len(df), ters=True))
     ax.set_xlabel("MAE")
     for i, v in enumerate(df["MAE"]):
-        ax.text(v, i, f" {v:.4f}", va="center", fontsize=9, fontweight="bold")
+        ax.text(v, i, f" {v:.4f}", va="center", fontsize=9 * FIG_OLCEK, fontweight="bold")
     if df["MAE"].notna().any():
         ax.set_xlim(right=df["MAE"].max() * 1.20)
     _panel_etiket(ax, "b")
@@ -95,9 +98,9 @@ def r2_heatmap_grafigi(uzun_df: pd.DataFrame) -> None:
     # "i2_uptake_mmol_g") gorunuyordu - insan-okunur KISA etiketlerle
     # (grafik_ortak.KISA_ETIKETLER) degistirildi.
     pivot = pivot.rename(columns=lambda c: KISA_ETIKETLER.get(c, c))
-    fig, ax = plt.subplots(figsize=(7, 0.55 * len(pivot) + 2))
+    fig, ax = plt.subplots(figsize=boyut(7, 0.55 * len(pivot) + 2))
     sns.heatmap(pivot, annot=True, fmt=".2f", cmap="RdYlGn", center=0.0,
-                cbar_kws={"label": "R²"}, annot_kws={"fontsize": 9, "fontweight": "bold"}, ax=ax)
+                cbar_kws={"label": "R²"}, annot_kws={"fontsize": 9 * FIG_OLCEK, "fontweight": "bold"}, ax=ax)
     ax.set_xlabel("Target")
     ax.set_ylabel("Model")
     plt.setp(ax.get_xticklabels(), rotation=25, ha="right")
@@ -111,7 +114,7 @@ def r2_vs_mae_grafigi(df: pd.DataFrame) -> None:
     # (R2 degerleri birbirine cok yakinken, bkz. gercek koşum: 0.851-0.854)
     # UST USTE BINIYOR/okunamaz hale geliyordu - metin-etiketleri KALDIRILIP
     # renk<->model eslemesini gosteren TEK bir sag-ust LEJANT ile degistirildi.
-    fig, ax = plt.subplots(figsize=(7, 6.5))
+    fig, ax = plt.subplots(figsize=boyut(7, 6.5))
     renkler = _renk_listesi(len(df))
     for (_, row), renk in zip(df.iterrows(), renkler):
         ax.scatter(row["MAE"], row["R2"], s=90, color=renk, edgecolors="black",
@@ -120,8 +123,8 @@ def r2_vs_mae_grafigi(df: pd.DataFrame) -> None:
     # birakilir, lejant sag-ust koseye (kullanici istegi) 2 sutunlu/kucuk
     # yazi ile sigdirilir.
     y0, y1 = ax.get_ylim(); ax.set_ylim(y0, y1 + (y1 - y0) * 0.22)
-    ax.legend(loc="upper right", fontsize=7.5, ncol=2, frameon=True,
-              title="Model", title_fontsize=8.5, framealpha=0.9)
+    ax.legend(loc="upper right", fontsize=7.5 * FIG_OLCEK, ncol=2, frameon=True,
+              title="Model", title_fontsize=8.5 * FIG_OLCEK, framealpha=0.9)
     ax.set_xlabel("MAE")
     ax.set_ylabel("R²")
     _panel_etiket(ax, "d")

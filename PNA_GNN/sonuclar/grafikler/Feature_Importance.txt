@@ -1,6 +1,6 @@
-I = Pore Geometry
-II = Surface Area
-III = Structural / Size
-IV = Composition-Derived
-V = Chemical Modification
-VI = Crystal Structure
+(a) = Pore Geometry
+(b) = Surface Area
+(c) = Structural / Size
+(d) = Composition-Derived
+(e) = Chemical Modification
+(f) = Crystal Structure

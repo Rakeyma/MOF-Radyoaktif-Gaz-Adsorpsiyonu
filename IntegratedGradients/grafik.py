@@ -11,6 +11,7 @@ import pandas as pd
 
 try:
     import grafik_ortak as go
+    from grafik_ortak import boyut
     from egitim_ortak import TARGET_COLUMNS
 except ImportError:
     sys.exit("HATA: kok dizinden calistirin: python -m IntegratedGradients.grafik")
@@ -29,7 +30,7 @@ def element_ig_grafigi(element_df: pd.DataFrame, kol: str, cikti_yolu) -> None:
     # hedef-adi parantezi - degerler ONCEDEN olceklenir, olcek DOGRUDAN
     # basligin icine gomulur, hedef-adi eksen basligindan kaldirilir.
     degerler, x_etiket = go.olcekle_ve_etiketle(alt["ortalama"].values, "Mean Position IG Importance")
-    fig, ax = plt.subplots(figsize=(6.5, 5))
+    fig, ax = plt.subplots(figsize=boyut(6.5, 5))
     renkler = ["firebrick" if v < 0 else "purple" for v in degerler]
     ax.barh(alt["element"][::-1], degerler[::-1], color=renkler[::-1])
     ax.axvline(0, color="black", lw=0.8)
@@ -50,12 +51,18 @@ def aux_ig_grafigi(aux_df: pd.DataFrame, kol: str, cikti_yolu) -> None:
     if alt.empty:
         return
     degerler, x_etiket = go.olcekle_ve_etiketle(alt["ortalama"].values, "Mean Aux-Feature IG Importance")
-    fig, ax = plt.subplots(figsize=(7, 5))
+    fig, ax = plt.subplots(figsize=boyut(7, 5))
     renkler = ["firebrick" if v < 0 else "purple" for v in degerler]
-    ax.barh(alt["aux_feature"][::-1], degerler[::-1], color=renkler[::-1])
+    ozellik_adlari = list(alt["aux_feature"][::-1])
+    ax.barh(ozellik_adlari, degerler[::-1], color=renkler[::-1])
     ax.axvline(0, color="black", lw=0.8)
     go._sikitir_xlim(ax, degerler)
     ax.set_xlabel(x_etiket)
+    # Ozellik adlari ('volumetric_surface_area_m2_cm3' gibi) cok uzun oldugundan
+    # y-ekseninde cubuklari ezip grafigi okunmaz hale getiriyordu; (a),(b),(c)...
+    # ile degistirilir, harf->ad eslesmesi .txt'ye yazilir ve rapor bunu seklin
+    # ALTINDA tablo olarak basar (kullanici istegi).
+    go.harflendir_uzun_etiketler(ax, ozellik_adlari, cikti_yolu)
     ax.set_ylabel("Porosity / Composition Feature")
     fig.tight_layout()
     go.panel_ekle(fig)

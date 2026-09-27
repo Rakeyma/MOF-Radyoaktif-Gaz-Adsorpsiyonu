@@ -29,6 +29,9 @@ from egitim_ortak import (
 )
 from graf_ozellik_ortak import CUTOFF, EMB_DIM
 from paths import GITHUB_REPO_URL
+from kaynakca import KAYNAKLAR, atif
+from veri_indirici_1_jarvis_core_mof import MAX_MATERIALS, MAX_MATERIALS_PRETRAIN, ARKETIPLER
+from veri_artirma_3_augmentasyon import N_AUGMENT_PER_BASE
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
@@ -79,6 +82,27 @@ def main() -> None:
     h(doc, "MOF Radioactive Gas Adsorption — Methodology Report", level=0)
     para(doc, "Static architecture/methodology document (does not read live results — see "
               "'MOF_Radyoaktif_Gaz_Adsorpsiyonu_Raporu.docx' for actual run outputs).", bold=True)
+    doc.add_paragraph()
+
+    h(doc, "Abstract")
+    para(doc, "This document specifies the methodology of an end-to-end graph neural network "
+              "(GNN) pipeline for predicting xenon and krypton adsorption capacity, Xe/Kr "
+              "selectivity and iodine (I2) adsorption capacity in metal-organic frameworks "
+              "(MOFs), motivated by radioactive off-gas separation in nuclear waste "
+              "management. The pipeline comprises five components: a fixed publication-grade "
+              "reporting standard, database/API acquisition of MOF structures, NLP-based "
+              "literature mining, pymatgen-based structural augmentation, and a two-stage "
+              "transfer-learning protocol (proxy-target pretraining followed by multi-task "
+              "fine-tuning under a leakage-safe, structure-grouped K-fold split). Eleven GNN "
+              "architectures spanning message-passing, attention-based, edge-conditioned and "
+              "E(3)-equivariant families are implemented behind a single shared encoder "
+              "interface, and four complementary explainability methods are applied to the "
+              "lightest of them. This document describes what the pipeline DOES; the "
+              "companion dynamic report states what a given run actually PRODUCED, including "
+              "which architectures were trained and how the target labels were generated. "
+              "Readers should consult §9 before citing any metric: in the published run all "
+              "target labels are synthetic.", size=9)
+    doc.add_paragraph()
 
     h(doc, "1. Objective")
     para(doc, "Predict Xenon (Xe) and Krypton (Kr) adsorption capacity, Xe/Kr selectivity, and Iodine "
@@ -88,40 +112,38 @@ def main() -> None:
               "learning, and 4 Explainable AI methods.")
 
     h(doc, "2. Data Source & Citation")
-    para(doc, "Base MOF structures (CIF + full 3D coordinates) and GCMC-simulated CO2/CH4 adsorption "
-              "proxy properties are fetched from the Hugging Face dataset 'jablonkagroup/"
-              "core_mof_no_topo' (CC BY 4.0), a CoRE-MOF-derived corpus. Any use of this pipeline's "
-              "output data must cite the sources below.")
+    para(doc, f"Base MOF structures (CIF + full 3D coordinates) are fetched from the Hugging Face "
+              f"dataset 'jablonkagroup/core_mof_no_topo' (CC BY 4.0) {atif('jablonka2023')}, a "
+              f"CoRE-MOF-derived corpus {atif('chung2014', 'chung2019')}. "
+              "That dataset carries no DFT formation energy, so the pretraining target is taken "
+              "from its GCMC-simulated CO2 heat of adsorption (Widom insertion, kJ/mol converted "
+              "to eV) — used purely as an ENERGETIC PROXY and named accordingly "
+              "('formation_energy_eV_atom_proxy'). No Xe, Kr or I2 adsorption values exist in this "
+              f"source; see §9 for how the gas-adsorption labels are actually produced. The "
+              f"dataset itself must be cited with the record below in any publication that uses "
+              f"this pipeline's output; the full reference list is given at the end of this "
+              f"document.")
     doc.add_paragraph()
     citation_box(doc, "Dataset: jablonkagroup/core_mof_no_topo. Hugging Face Datasets. "
                        "License: CC BY 4.0. https://huggingface.co/datasets/jablonkagroup/core_mof_no_topo")
-    doc.add_paragraph()
-    references_list(doc, [
-        "Jablonka, K. M.; Rosen, A. S.; Krishnapriyan, A. S.; Smit, B. An Ecosystem for Digital "
-        "Reticular Chemistry. ACS Cent. Sci. 2023, 9 (4), 563-581. https://doi.org/10.1021/acscentsci.2c01177.",
-        "Chung, Y. G. et al. Computation-Ready, Experimental Metal-Organic Frameworks: A Tool To "
-        "Enable High-Throughput Screening of Nanoporous Crystals. Chem. Mater. 2014, 26 (21), "
-        "6185-6192. https://doi.org/10.1021/cm502594j.",
-        "Chung, Y. G. et al. Advances, Updates, and Analytics for the Computation-Ready, Experimental "
-        "Metal-Organic Framework Database: CoRE MOF 2019. J. Chem. Eng. Data 2019, 64 (12), "
-        "5985-5998. https://doi.org/10.1021/acs.jced.9b00835.",
-        "Sikora, B. J.; Wilmer, C. E.; Greenfield, M. L.; Snurr, R. Q. Thermodynamic Analysis of "
-        "Xe/Kr Selectivity in over 137,000 Hypothetical Metal-Organic Frameworks. Chem. Sci. 2012, "
-        "3, 2217-2223. https://doi.org/10.1039/C2SC01097F (physical basis of the pore-size/"
-        "selectivity proxy correlation, see eslesme_4_dataset_birlestirici.py).",
-    ])
 
     h(doc, "3. Five-Component Pipeline")
-    bullet(doc, "Component 1 — Reporting standard: all plots hardcoded to 600 DPI .tif, bold English "
-                "fonts/labels/legends/titles (grafik_ortak.py rcParams). In .docx reports, only "
-                "headings carry color; all body text/tables are black-and-white — only the embedded "
-                "plots remain in color.")
-    bullet(doc, "Component 2 — Database/API scraping (veri_indirici_1_jarvis_core_mof.py): Hugging Face "
-                "`datasets` (jablonkagroup/core_mof_no_topo, see §2) as primary source, CoRE-MOF open "
-                "CSV as secondary, and a procedural generator seeded from 12 well-known real MOF "
-                "families as a tertiary fallback that NEVER blocks the pipeline. Pore volume / void "
-                "fraction / surface area / LCD / PLD are estimated via a lightweight geometric proxy "
-                "when not directly supplied.")
+    bullet(doc, "Component 1 — Reporting standard: all plots hardcoded to 600 DPI .tif (each also "
+                "saved as .png), bold English fonts/labels/legends/titles (grafik_ortak.py rcParams). "
+                "Both .docx reports are entirely BLACK-AND-WHITE — headings included (every heading "
+                "run is explicitly set to RGB 0,0,0) and tables use plain 'Table Grid' borders with "
+                "no fills or zebra striping; the only colour in either document comes from the "
+                "embedded matplotlib figures.")
+    bullet(doc, f"Component 2 — Database/API scraping (veri_indirici_1_jarvis_core_mof.py): Hugging "
+                f"Face `datasets` (jablonkagroup/core_mof_no_topo, see §2) as primary source, CoRE-MOF "
+                f"open CSV as secondary, and a procedural generator seeded from {len(ARKETIPLER)} "
+                f"well-known real MOF families as a tertiary fallback that NEVER blocks the pipeline. "
+                f"Pore volume / void fraction / surface area / LCD / PLD are NOT taken from Zeo++ or "
+                f"experiment (Zeo++ is not available in this environment) — they are estimated from "
+                f"the structure by a lightweight geometric approximation "
+                f"(estimate_pore_proxies(): van-der-Waals volume packing for void fraction, shortest "
+                f"lattice vector scaled by sqrt(void fraction) for LCD, and PLD = 0.55 x LCD). "
+                f"They must not be cited as measured BET areas or pore diameters.")
     bullet(doc, "Component 3 — NLP literature mining (nlp_literatur_madencilik_2.py): CrossRef + arXiv "
                 "APIs (keyless), regex-based extraction of MOF names + numeric capacity values "
                 "(mmol/g, cm3/g, wt%) from real abstracts/titles near Xe/Kr/I2 keywords. Writes an empty "
@@ -230,17 +252,17 @@ def main() -> None:
               "graf_ozellik_ortak.py (periodic 3D radius graph, cutoff=8.0 Å) + egitim_ortak.py "
               "(K-fold, early stopping, checkpointing, transfer learning, permutation importance).")
     for line in [
-        "GraphGPS — GPSConv (local GINEConv + global multi-head attention).",
-        "PNA-GNN — PNAConv (mean/min/max/std aggregators x identity/amplification/attenuation scalers).",
-        "GIN — GINEConv (edge-feature-aware Graph Isomorphism Network).",
-        "GAT — GATv2Conv (edge-distance-aware attention).",
-        "GatedGCN — ResGatedGraphConv (learned edge gating).",
-        "DeeperGCN — GENConv + DeepGCNLayer 'res+' blocks (8 layers).",
-        "ECC — NNConv (dynamic edge-conditioned filter/weight generation).",
-        "TFN — Tensor Field Network, from scratch, l≤1 Clebsch-Gordan coupling (no e3nn).",
-        "EGNN — E(n)-Equivariant GNN, from scratch, invariant-distance message passing (lightest — chosen for XAI).",
-        "SE(3)-Transformer — from scratch, l≤1 CG coupling + multi-head equivariant attention.",
-        "DimeNet++ (autonomously added) — from scratch directional/angular message passing over (k,j,i) "
+        f"GraphGPS {atif('rampasek2022')} — GPSConv (local GINEConv + global multi-head attention).",
+        f"PNA-GNN {atif('corso2020')} — PNAConv (mean/min/max/std aggregators x identity/amplification/attenuation scalers).",
+        f"GIN {atif('xu2019')} — GINEConv (edge-feature-aware Graph Isomorphism Network).",
+        f"GAT {atif('brody2022')} — GATv2Conv (edge-distance-aware attention).",
+        f"GatedGCN {atif('bresson2017')} — ResGatedGraphConv (learned edge gating).",
+        f"DeeperGCN {atif('li2020')} — GENConv + DeepGCNLayer 'res+' blocks (8 layers).",
+        f"ECC {atif('simonovsky2017')} — NNConv (dynamic edge-conditioned filter/weight generation).",
+        f"TFN {atif('thomas2018')} — Tensor Field Network, from scratch, l≤1 Clebsch-Gordan coupling (no e3nn).",
+        f"EGNN {atif('satorras2021')} — E(n)-Equivariant GNN, from scratch, invariant-distance message passing (lightest — chosen for XAI).",
+        f"SE(3)-Transformer {atif('fuchs2020')} — from scratch, l≤1 CG coupling + multi-head equivariant attention.",
+        f"DimeNet++ {atif('gasteiger2020')} (autonomously added) — from scratch directional/angular message passing over (k,j,i) "
         "triplets (Fourier angular basis, fully vectorized triplet construction), chosen because "
         "pore-window angular geometry directly governs size-selective Xe/Kr/I2 sieving.",
     ]:
@@ -248,16 +270,16 @@ def main() -> None:
 
     h(doc, "7. Four XAI Methods (applied to EGNN — lightest model)")
     for line in [
-        "GraphLIME — local linear surrogate over Bernoulli atom masks, fitted per target with a "
+        f"GraphLIME {atif('huang2020', 'ribeiro2016')} — local linear surrogate over Bernoulli atom masks, fitted per target with a "
         "CROSS-VALIDATED Lasso (LassoCV). The regularization strength is selected per sample from "
         "the data rather than fixed: with a hardcoded alpha, the masking-induced prediction deltas "
         "of these large MOFs (72-172 atoms, whose per-atom effect is heavily diluted by 4 message-"
         "passing layers + LayerNorm) fell below the penalty threshold and every coefficient "
         "collapsed to exactly zero, producing empty explanations.",
         "Edge Attribution — vanilla gradient saliency + Integrated Gradients on an edge (RBF-output) mask.",
-        "SubgraphX — Monte Carlo Tree Search over connected atom subsets, UCT selection, multi-target "
+        f"SubgraphX {atif('yuan2021')} — Monte Carlo Tree Search over connected atom subsets, UCT selection, multi-target "
         "standardized-space reward.",
-        "Integrated Gradients (autonomously added) — true continuous-input IG directly on atomic 3D "
+        f"Integrated Gradients {atif('sundararajan2017')} (autonomously added) — true continuous-input IG directly on atomic 3D "
         "coordinates and porosity/composition features (not a mask), satisfying the completeness axiom.",
     ]:
         bullet(doc, line)
@@ -303,8 +325,22 @@ def main() -> None:
                 "contribute real labels; until then every label is proxy-generated, as stated above.")
     bullet(doc, "Procedural fallback structures (when live API access is unavailable) are simplified "
                 "node+linker skeletons, not crystallographically refined structures.")
-    bullet(doc, "Default MAX_MATERIALS/MAX_MATERIALS_PRETRAIN/N_AUGMENT_PER_BASE are kept small for fast "
-                "validation; scaling to production size requires only environment-variable changes.")
+    bullet(doc, f"Dataset size is capped by environment variables whose code defaults are "
+                f"MAX_MATERIALS={MAX_MATERIALS} (fine-tune base MOFs), "
+                f"MAX_MATERIALS_PRETRAIN={MAX_MATERIALS_PRETRAIN} and "
+                f"N_AUGMENT_PER_BASE={N_AUGMENT_PER_BASE}. These are modest by design so the whole "
+                f"pipeline can be validated quickly; scaling up requires only environment-variable "
+                f"changes, no code edits. Note the caps are upper bounds — a run yields fewer rows "
+                f"if the upstream source returns fewer usable structures (the published run "
+                f"obtained 300 fine-tune base MOFs and 1500 pretrain structures).")
+
+    h(doc, "References")
+    para(doc, "Bibliographic records were compiled from the literature; volume/page details "
+              "should be verified against the originals before submission. This list is shared "
+              "with the companion dynamic report (kaynakca.py), so a given number refers to the "
+              "same work in both documents.", size=8.5)
+    doc.add_paragraph()
+    references_list(doc, [kunye for _, kunye in KAYNAKLAR], size=9)
 
     out_path = PROJECT_ROOT / "MOF_Radyoaktif_Gaz_Adsorpsiyonu_Bilgi_RAPORU.docx"
     doc.save(str(out_path))

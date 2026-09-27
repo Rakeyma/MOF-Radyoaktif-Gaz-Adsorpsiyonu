@@ -10,6 +10,7 @@ import pandas as pd
 
 try:
     import grafik_ortak as go
+    from grafik_ortak import boyut
 except ImportError:
     sys.exit("HATA: kok dizinden calistirin: python -m SubgraphX.grafik")
 
@@ -21,7 +22,7 @@ def element_onem_grafigi(element_df: pd.DataFrame, cikti_yolu) -> None:
     import matplotlib.pyplot as plt
 
     alt = element_df.sort_values("ortalama", ascending=False).head(12)
-    fig, ax = plt.subplots(figsize=(6.5, 5))
+    fig, ax = plt.subplots(figsize=boyut(6.5, 5))
     ax.barh(alt["element"][::-1], alt["ortalama"][::-1], color="mediumseagreen")
     ax.set_xlabel("Mean SubgraphX Importance")
     ax.set_ylabel("Element")
@@ -33,7 +34,7 @@ def element_onem_grafigi(element_df: pd.DataFrame, cikti_yolu) -> None:
 def cekirdek_boyut_grafigi(cekirdek_df: pd.DataFrame, cikti_yolu) -> None:
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    fig, ax = plt.subplots(figsize=boyut(6.5, 4.5))
     ax.hist(cekirdek_df["cekirdek_atom_orani"], bins=15, color="mediumseagreen", edgecolor="white")
     ax.set_xlabel("Core Subgraph Size / Total Atom Count")
     ax.set_ylabel("Frequency")

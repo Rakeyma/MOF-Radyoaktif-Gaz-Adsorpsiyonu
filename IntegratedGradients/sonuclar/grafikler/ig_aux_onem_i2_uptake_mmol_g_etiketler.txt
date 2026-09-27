@@ -1,0 +1,12 @@
+(a) = mean_atomic_number
+(b) = nelements
+(c) = metal_fraction
+(d) = volumetric_surface_area_m2_cm3
+(e) = gravimetric_surface_area_m2_g
+(f) = nsites
+(g) = density_g_cm3
+(h) = lcd_A
+(i) = pld_A
+(j) = pore_volume_cm3_g
+(k) = void_fraction
+(l) = has_functional_group

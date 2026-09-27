@@ -10,6 +10,7 @@ import pandas as pd
 
 try:
     import grafik_ortak as go
+    from grafik_ortak import boyut
     from egitim_ortak import TARGET_COLUMNS
 except ImportError:
     sys.exit("HATA: kok dizinden calistirin: python -m GraphLIME.grafik")
@@ -30,7 +31,7 @@ def element_onem_grafigi(element_df: pd.DataFrame, kol: str, cikti_yolu) -> None
     # (3) eksen basligindaki hedef-adi PARANTEZI (aciklayici ek) kaldirildi -
     # hangi hedefe ait oldugu makale/figur altyazisinda belirtilecek.
     degerler, x_etiket = go.olcekle_ve_etiketle(alt["ortalama"].values, "Mean GraphLIME Importance")
-    fig, ax = plt.subplots(figsize=(6.5, 5))
+    fig, ax = plt.subplots(figsize=boyut(6.5, 5))
     renkler = ["firebrick" if v < 0 else "steelblue" for v in degerler]
     ax.barh(alt["element"][::-1], degerler[::-1], color=renkler[::-1])
     ax.axvline(0, color="black", lw=0.8)

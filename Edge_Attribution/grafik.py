@@ -11,6 +11,7 @@ import pandas as pd
 
 try:
     import grafik_ortak as go
+    from grafik_ortak import boyut
     from egitim_ortak import TARGET_COLUMNS
 except ImportError:
     sys.exit("HATA: kok dizinden calistirin: python -m Edge_Attribution.grafik")
@@ -30,7 +31,7 @@ def bond_onem_grafigi(bond_df: pd.DataFrame, kol: str, cikti_yolu) -> None:
     # adi parantezi (aciklayici ek) kaldirildi - degerler ONCEDEN olceklenir,
     # olcek DOGRUDAN basligin icine gomulur.
     degerler, x_etiket = go.olcekle_ve_etiketle(alt["ortalama"].values, "Mean Integrated Gradients")
-    fig, ax = plt.subplots(figsize=(6.5, 5))
+    fig, ax = plt.subplots(figsize=boyut(6.5, 5))
     renkler = ["firebrick" if v < 0 else "darkorange" for v in degerler]
     ax.barh(alt["bond_pair"][::-1], degerler[::-1], color=renkler[::-1])
     ax.axvline(0, color="black", lw=0.8)
@@ -53,7 +54,7 @@ def mesafe_profili_grafigi(mesafe_df: pd.DataFrame, kol: str, cikti_yolu) -> Non
     # olcek basligin icine gomulur (matplotlib'in cakisabilecek otomatik
     # offset-metni KULLANILMAZ).
     y_degerler, y_etiket = go.olcekle_ve_etiketle(alt["abs_ortalama"].values, "Mean |IG|")
-    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    fig, ax = plt.subplots(figsize=boyut(6.5, 4.5))
     ax.plot(alt["mesafe_bin_A"], y_degerler, marker="o", color="steelblue", lw=1.8)
     ax.set_xlabel("Edge Distance (Å)")
     ax.set_ylabel(y_etiket)
