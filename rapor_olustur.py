@@ -497,7 +497,64 @@ def bolum_karsilastirma_tablosu(doc):
         size=9, indent=True)
     doc.add_paragraph()
     _tablo_yorumu(doc, overall, df)
+    doc.add_paragraph()
+    _bolum_terimler(doc, meta)
     page_break(doc)
+
+
+def _bolum_terimler(doc, meta) -> None:
+    """Bu raporu ve grafiklerini okumak için gereken terimler, konuya aşina
+    OLMAYAN bir okuyucu için açıklanır. Tam sözlük (eğitim süreci, GNN
+    mimarisi, malzeme bilimi, XAI terimleri dahil) Bilgi Raporu §9'dadır."""
+    k = meta["k_folds"] if meta else "K"
+    add_paragraph(doc, "Terim Açıklamaları (bu raporu okumak için):", size=10, bold=True, indent=True)
+    for terim, aciklama in [
+        ("K-Fold çapraz doğrulama",
+         f"Veri {k} eşit parçaya ('fold') bölünür. {k} ayrı model eğitilir; her birinde "
+         f"parçalardan biri TEST, kalanları EĞİTİM olarak kullanılır. Böylece HER örnek "
+         f"tam olarak bir kez, modelin onu hiç görmediği bir turda test edilmiş olur. "
+         f"Buradaki K, kaç parçaya bölündüğümüzdür — bu koşumda K={k}."),
+        ("Fold (kat)",
+         "Bu parçalardan biri. GRAFİKLERDEKİ 'Fold 1 / Fold 2 / Fold 3' renkleri, o "
+         "noktanın hangi turda TEST verisi olarak tahmin edildiğini gösterir; yani her "
+         "nokta, modelin o MOF'u hiç görmeden yaptığı tahmindir. Renklerin birbirine "
+         "karışmış olması iyiye işarettir — hiçbir fold diğerlerinden sistematik olarak "
+         "sapmıyor demektir."),
+        ("Fold-dışı (OOF) tahmin ve 'havuzlanmış' metrik",
+         "Bir örnek için, o örneğin TEST fold'unda olduğu turda üretilen tahmin. "
+         "'Havuzlanmış (pooled)' metrik, tüm foldların bu tahminlerinin tek listede "
+         "birleştirilip tek bir R²/MAE hesaplanmasıdır — yani tüm veri seti tek bir test "
+         "seti gibi değerlendirilir ve hiçbir örnek kendi eğitim verisiyle ölçülmez."),
+        ("Sızıntısız (temel-MOF bazlı) bölme",
+         "Veri artırma ile bir MOF'tan birden fazla varyant üretildiğinden, varyantın "
+         "eğitimde orijinalinin testte olması 'kopya çekme' anlamına gelirdi. Bu yüzden "
+         "bölme örnek bazında değil TEMEL MOF bazında yapılır: bir MOF'un tüm varyantları "
+         "hep aynı fold'dadır."),
+        ("Artık (residual)",
+         "Tahmin − gerçek değer. Hata dağılımı grafiklerinde bu değerin histogramı "
+         "gösterilir; sıfır etrafında dar ve simetrik olması istenir."),
+        ("Permütasyon önemi (ΔMAE)",
+         "Bir özellik grubunun değerleri örnekler arasında rastgele karıştırılır ve "
+         "hatanın ne kadar KÖTÜLEŞTİĞİ ölçülür. Çok kötüleşiyorsa model o özelliğe "
+         "bağımlıdır. ΔMAE = karıştırma sonrası MAE − baz MAE."),
+        ("Panel harfleri (a), (b), ...",
+         "Çok panelli şekillerde her grafiğin SOL ÜST köşesindeki harf, şekil altındaki "
+         "açıklamada hangi modele ait olduğunu söyler."),
+        ("Hedefler",
+         "Xe/Kr/I₂ kapasitesi: 1 gram MOF'un tutabildiği gaz miktarı (mmol/g). Xe/Kr "
+         "seçicilik: MOF'un Xe'yi Kr'ye göre ne kadar tercihen tuttuğu (birimsiz) — "
+         "nükleer atık gazı ayırmada kritik metrik."),
+    ]:
+        p = doc.add_paragraph()
+        p.paragraph_format.left_indent = Cm(0.5)
+        r = p.add_run(f"{terim}: "); r.bold = True; r.font.size = Pt(9)
+        r2 = p.add_run(aciklama); r2.font.size = Pt(9)
+    doc.add_paragraph()
+    add_paragraph(doc,
+        "Eğitim süreci (epoch, batch, erken durdurma, transfer öğrenme), GNN mimarisi "
+        "(mesaj iletimi, gömme, ekvaryans), malzeme bilimi (MOF, PLD, LCD, boyut-eleme, "
+        "GCMC) ve XAI (Lasso, maskeleme, Integrated Gradients) terimlerinin tam "
+        "açıklamaları Bilgi Raporu §9 'Terimler Sözlüğü'ndedir.", size=9, indent=True)
 
 
 def _tablo_yorumu(doc, overall: pd.DataFrame, df: pd.DataFrame) -> None:

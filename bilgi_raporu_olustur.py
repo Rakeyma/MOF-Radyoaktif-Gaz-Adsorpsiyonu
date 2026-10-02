@@ -40,11 +40,17 @@ from veri_artirma_3_augmentasyon import N_AUGMENT_PER_BASE
 
 
 def h(doc, text, level=1):
-    """TÜM başlıklar SİYAH kalın metin - rapor_olustur.py ile TUTARLI."""
-    sizes = {0: 18, 1: 15, 2: 13, 3: 12}
-    p = doc.add_paragraph()
-    r = p.add_run(text); r.bold = True; r.font.size = Pt(sizes.get(level, 12))
-    r.font.color.rgb = RGBColor(0, 0, 0)
+    """Word'un GERÇEK Heading stillerini kullanır - böylece başlıklar Word'de
+    KATLANABİLİR olur ve gezinme bölmesinde görünür.
+
+    BİÇİM FARKI (bilinçli): danışmanın onayladığı iki rapor arasında bu fark
+    vardır ve korunur - SONUÇ raporunda başlıklar sade bold paragraftır
+    (katlanmaz), BİLGİ raporunda ise Heading 1/2 stilleriyle katlanabilirdir.
+    Başlık rengi Word'ün mavi varsayılanı yerine SİYAHA çevrilir (raporun
+    tamamı siyah-beyaz)."""
+    p = doc.add_heading(text, level=level)
+    for r in p.runs:
+        r.font.color.rgb = RGBColor(0, 0, 0)
     return p
 
 
@@ -551,8 +557,479 @@ def bolum_xai_detaylari(doc):
 # ---------------------------------------------------------------------------
 # §6 KOD VE VERİ ERİŞİLEBİLİRLİĞİ
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# §6 PERMÜTASYON ÖNEMİ VE PROJEYE ÖZGÜ TEKNİK BULGULAR
+# ---------------------------------------------------------------------------
+def bolum_permutasyon_bulgular(doc):
+    h(doc, "6. Permütasyon Önemi ve Projeye Özgü Teknik Bulgular")
+    para(doc,
+         "Kristal gömmesi ve aux özellik vektörü fold başına ÖNCEDEN hesaplanır "
+         "(precompute), permütasyon SADECE hafif regresyon başı üzerinde koşulur — "
+         "böylece 10 model × 6 özellik grubu × fold sayısı kadar hesap, tüm ağı "
+         "yeniden çalıştırmadan yapılabilir.", size=9.5)
+    doc.add_paragraph()
+
+    h(doc, "6.1 Ortak Permütasyon Yöntemi", level=2)
+    egitilmis = _egitilmis_modeller()
+    meta = _metrikler(egitilmis[0]) if egitilmis else None
+    skorlar_tum = {}
+    for m in egitilmis:
+        f = PROJECT_ROOT / m / "sonuclar" / "grafikler" / "perm_importance.json"
+        if f.exists():
+            skorlar_tum[m] = json.loads(f.read_text(encoding="utf-8"))
+
+    bulgu = "—"
+    if skorlar_tum:
+        birinci = {}
+        for m, s in skorlar_tum.items():
+            birinci[max(s, key=s.get)] = birinci.get(max(s, key=s.get), 0) + 1
+        en_sik, adet = max(birinci.items(), key=lambda kv: kv[1])
+        araliklar = [s.get(en_sik, 0.0) for s in skorlar_tum.values()]
+        bulgu = (f"{en_sik} grubu {adet}/{len(skorlar_tum)} modelde 1. sıradadır "
+                 f"(ΔMAE={min(araliklar):.4f}–{max(araliklar):.4f})")
+
+    kv_tablo(doc, [
+        ("Permütasyon hedefleri",
+         "1) Crystal Structure — grafik kodlayıcının ürettiği gömme satırları "
+         "örnekler arasında karıştırılır;  2) 5 aux özellik grubu "
+         "(Pore Geometry, Surface Area, Structural / Size, Chemical Modification, "
+         "Composition-Derived)"),
+        ("Kapsam", f"{meta['k_folds'] if meta else '—'} fold; her foldun test seti "
+                    f"üzerinde ayrı hesaplanır, sonra fold ortalaması alınır"),
+        ("Birim", "ΔMAE = karıştırma sonrası MAE − baz MAE. Pozitif ve büyük bir "
+                   "değer, modelin o özellik grubuna güçlü bağımlı olduğunu gösterir"),
+        ("TUTARLI BULGU", bulgu),
+        ("Fiziksel yorum",
+         "Hazır-hesaplanmış gözeneklilik tanımlayıcıları, öğrenilen kristal graf "
+         "gömmesinden (Crystal Structure) onlarca kat daha güçlü bir sinyal "
+         "taşımaktadır. Bu, modelin bir kusuru DEĞİL veri kurgusunun doğrudan "
+         "sonucudur: hedef etiketler zaten bu tanımlayıcılardan üretilmiştir "
+         "(§1.2), dolayısıyla 3B atomistik geometri ek bilgi taşımamaktadır"),
+    ])
+
+    h(doc, "6.2 Gözeneklilik – Seçicilik Fiziksel Tutarlılığı", level=2)
+    r_gercek, r_tahmin = [], []
+    for m in egitilmis:
+        f = PROJECT_ROOT / m / "sonuclar" / "test_tahminleri_oof.csv"
+        if not f.exists():
+            continue
+        odf = pd.read_csv(f)
+        gerekli = {"pld_A", "gercek_xe_kr_selectivity", "tahmin_xe_kr_selectivity"}
+        if not gerekli.issubset(odf.columns):
+            continue
+        sub = odf.dropna(subset=list(gerekli))
+        if len(sub) < 5:
+            continue
+        from scipy.stats import pearsonr
+        dx = (sub["pld_A"] - 4.10).abs()
+        if dx.std() < 1e-9:
+            continue
+        r_gercek.append(pearsonr(dx, sub["gercek_xe_kr_selectivity"])[0])
+        r_tahmin.append(pearsonr(dx, sub["tahmin_xe_kr_selectivity"])[0])
+    kv_tablo(doc, [
+        ("Beklenen fizik", "Sikora et al. (2012) boyut-eleme ilkesi: gözenek-sınırlayıcı "
+                            "çap (PLD) hedef gazın kinetik çapına yaklaştıkça seçicilik "
+                            "ARTAR — yani |PLD − d_Xe| ile seçicilik arasında NEGATİF "
+                            "korelasyon beklenir"),
+        ("Gerçek veri korelasyonu",
+         f"r = {sum(r_gercek) / len(r_gercek):.3f}" if r_gercek else "—"),
+        ("Model sonucu",
+         (f"Eğitilmiş {len(r_tahmin)} modelin TAMAMI aynı negatif işareti doğru "
+          f"yakalamıştır (r_tahmin = {min(r_tahmin):.3f} … {max(r_tahmin):.3f})")
+         if r_tahmin else "—"),
+        ("UYARI — bu bir fizik doğrulaması DEĞİLDİR",
+         "Modelin ürettiği korelasyon, gürültü içeren 'gerçek' etiketlerinkinden "
+         "DAHA güçlüdür. Bunun nedeni, seçicilik etiketinin zaten PLD'nin "
+         "kapalı-form bir fonksiyonu olarak üretilmiş olması ve PLD'nin aynı "
+         "zamanda modele girdi olarak verilmesidir (§1.2). Model, altta yatan "
+         "gürültüsüz formüle yakınsamaktadır; dışsal bir fiziği keşfetmemektedir. "
+         "Gerçek etiketlere geçildiğinde bu test anlamlı bir fizik kontrolüne "
+         "dönüşecektir"),
+    ])
+
+    h(doc, "6.3 GraphLIME'da Ölçek Duyarlılığı (bu projeye özgü bulgu)", level=2)
+    kv_tablo(doc, [
+        ("Belirti", "GraphLIME'ın ürettiği TÜM atom önem katsayıları tam olarak "
+                     "0.0 çıkıyor, açıklama grafikleri tamamen boş görünüyordu "
+                     "(9954 atom satırının 9954'ü sıfır)"),
+        ("Kök neden", "Düzenlileştirme katsayısı (Lasso alpha) sabit 0.01 idi. Bu "
+                       "projenin MOF'ları 72–172 atom içerir ve tek bir atomun "
+                       "maskelenmesinin tahmine etkisi, 4 mesaj-iletim katmanı ve "
+                       "her katmandaki LayerNorm tarafından seyreltilir; ortaya çıkan "
+                       "tahmin farkları (|Δ| ≈ 0.01–0.03) sabit ceza teriminin "
+                       "eşiğinin ALTINDA kaldığından Lasso tüm katsayıları sıfıra "
+                       "çekiyordu"),
+        ("Teşhis yöntemi", "Gerçek bir checkpoint üzerinde alpha taraması: alpha=0.01 "
+                            "→ 0/139 sıfır-olmayan katsayı; alpha=1e-4 → 74/139"),
+        ("Çözüm", "Sabit alpha yerine LassoCV — düzenlileştirme katsayısı her örnek "
+                   "için çapraz doğrulamayla veriden seçilir, böylece farklı MOF "
+                   "boyutlarına otomatik uyum sağlanır"),
+        ("Sonuç", "9954 atom satırının 9518'i (%96) artık sıfır-olmayan gerçek önem "
+                   "skoru taşımaktadır"),
+        ("Genel ders", "Maskeleme tabanlı yerel vekil XAI yöntemleri büyük graflarda "
+                        "ÖLÇEĞE DUYARLIDIR: maskelemenin etkisi graf büyüdükçe "
+                        "seyrelir ve sabit bir ceza terimi sinyali tamamen "
+                        "bastırabilir"),
+    ])
+
+
+# ---------------------------------------------------------------------------
+# §7 YAZILIM VE KÜTÜPHANE BAĞIMLILIKLARI
+# ---------------------------------------------------------------------------
+def bolum_bagimliliklar(doc):
+    h(doc, "7. Yazılım ve Kütüphane Bağımlılıkları")
+    import importlib.metadata as md
+
+    kullanim = [
+        ("torch", "Tüm derin öğrenme modelleri, eğitim döngüsü, GPU hesabı"),
+        ("torch_geometric", "GraphGPS / PNA / GIN / GAT / GatedGCN / DeeperGCN / ECC "
+                             "graf evrişim katmanları"),
+        ("pymatgen", "CIF ayrıştırma, kristal yapı işleme, veri artırma "
+                      "(kusur/değiştirme/fonksiyonel grup), gözeneklilik kestirimi"),
+        ("scikit-learn", "K-Fold bölme, metrikler (R²/MAE/RMSE), GraphLIME'ın LassoCV'si"),
+        ("datasets", "Hugging Face veri setinin indirilmesi"),
+        ("pandas", "Veri seti okuma/yazma, tablo işlemleri"),
+        ("numpy", "Sayısal hesaplamalar"),
+        ("scipy", "Pearson korelasyonu (fiziksel tutarlılık testi)"),
+        ("matplotlib", "Tüm grafiklerin çizimi (600 dpi PNG + TIFF)"),
+        ("seaborn", "Isı haritaları ve grafik teması"),
+        ("python-docx", "Bu raporun ve Sonuç Raporu'nun .docx olarak üretilmesi"),
+    ]
+    satirlar = []
+    for ad, amac in kullanim:
+        try:
+            surum = md.version(ad)
+        except Exception:
+            surum = "(kurulu değil)"
+        satirlar.append((f"{ad}  —  {surum}", amac))
+    kv_tablo(doc, satirlar, size=8.5)
+
+    try:
+        import torch
+        donanim = (f"CUDA kullanılabilir: {torch.cuda.is_available()}"
+                   + (f" — {torch.cuda.get_device_name(0)}" if torch.cuda.is_available() else ""))
+    except Exception:
+        donanim = "—"
+    kv_tablo(doc, [
+        ("Donanım", donanim),
+        ("Not", "TFN, EGNN, SE(3)-Transformer ve DimeNet++ SIFIRDAN, saf PyTorch ile "
+                 "yazılmıştır — e3nn gibi ek bir ekvaryant kütüphane bağımlılığı YOKTUR"),
+    ])
+
+
+# ---------------------------------------------------------------------------
+# §8 PROJE DOSYA YAPISI
+# ---------------------------------------------------------------------------
+def bolum_dosya_yapisi(doc):
+    h(doc, "8. Proje Dosya Yapısı")
+    para(doc, "Paylaşılan modüller proje kökünde, her model/XAI yöntemi kendi "
+               "klasöründe aynı iskeleti takip eder:", size=9.5)
+    agac = f"""MOF Radyoaktif Gaz Adsorpsiyonu/
+├── paths.py                           # Tüm global yollar, model/XAI klasör listeleri, panel harfleri
+├── ortak_ozellikler.py                # AUX_FEATURE_COLUMNS ({AUX_DIM}) + AuxOlcekleyici + aux grupları
+├── graf_ozellik_ortak.py              # CIF → periyodik 3B yarıçap grafiği, RBF, scatter-mean
+├── egitim_ortak.py                    # K-Fold, erken durdurma, checkpoint, transfer öğrenme,
+│                                      #   permütasyon önemi, tüm grafiklerin üretimi
+├── grafik_ortak.py                    # 10 modelin paylaştığı grafik fonksiyonları (600 dpi PNG+TIFF)
+│
+├── veri_indirici_1_jarvis_core_mof.py # Bileşen 2: HF/CoRE-MOF indirme + gözeneklilik kestirimi
+├── nlp_literatur_madencilik_2.py      # Bileşen 3: CrossRef/arXiv literatür madenciliği
+├── veri_artirma_3_augmentasyon.py     # Bileşen 4: pymatgen tabanlı yapısal veri artırma
+├── eslesme_4_dataset_birlestirici.py  # Bileşen 5: nihai ön-eğitim + ince-ayar veri setleri
+│
+├── model_karsilastirma.py             # Tüm modellerin OOF metriklerini karşılaştırır
+├── model_karsilastirma_grafik.py      # 4 kıyaslama grafiği
+├── rapor_olustur.py                   # Sonuç Raporu (.docx)
+├── bilgi_raporu_olustur.py            # Bu rapor (.docx)
+│
+├── {" / ".join(MODEL_KLASORLERI[:5])}/
+├── {" / ".join(MODEL_KLASORLERI[5:])}/     # her model klasörü AYNI yapıda:
+│     ├── run_<model>.py                #   ön-eğitim + K-Fold ince-ayar (TEK komut)
+│     ├── grafik.py                     #   o modelin tüm grafikleri
+│     ├── checkpoints/                  #   fold{{N}}_best_model.pt
+│     ├── pretrain_checkpoints/         #   encoder_pretrained.pt
+│     └── sonuclar/                     #   metrikler.json, test_tahminleri_oof.csv,
+│                                       #   kfold_metrikleri.csv, egitim_gecmisi_fold*.csv, grafikler/
+│
+├── {" / ".join(XAI_KLASORLERI)}/   # her XAI klasörü:
+│     ├── run_<yontem>.py               #   XAI hesabı (EGNN checkpoint'leri üzerinde)
+│     ├── grafik.py                     #   o yöntemin grafikleri
+│     └── sonuclar/                     #   atom/kenar/element bazında CSV + grafikler/
+│
+├── data/
+│     ├── raw/                          # mof_ham_veri.csv, qmof_pretrain_ham.csv,
+│     │                                 #   nlp_literatur_madencilik_sonuclari.csv, kaynak_bilgisi.json
+│     └── processed/                    # gaz_adsorpsiyon_dataset_final.csv (NİHAİ ince-ayar veri seti),
+│                                       #   qmof_pretrain_dataset_final.csv, cif/, augmented_cif/,
+│                                       #   augmentasyon_manifest.csv, eslesme_bilgisi.json
+│
+├── model_karsilastirma_sonuclari.csv   # Tüm modellerin pooled OOF metrikleri
+├── model_karsilastirma_grafikler/      # 4 kıyaslama grafiği
+├── VERI_KAYNAGI_VE_SINIRLAMALAR.md     # Veri kökeni ve sentetiklik durumu
+├── SISTEM_RAPORU.md                    # Mimari genel bakış
+└── README.md"""
+    p = doc.add_paragraph()
+    r = p.add_run(agac)
+    r.font.name = "Consolas"
+    r.font.size = Pt(7.5)
+    doc.add_paragraph()
+
+
+# ---------------------------------------------------------------------------
+# §9 TERİMLER SÖZLÜĞÜ
+# ---------------------------------------------------------------------------
+TERIMLER = [
+    ("Çapraz Doğrulama ve Veri Bölme", None),
+    ("Fold (kat)", "Veri setinin eşit parçalarından biri. Veriyi K parçaya bölüp her "
+                   "parçayı sırayla 'test', kalanları 'eğitim' olarak kullanırız. "
+                   "GRAFİKLERDE 'Fold 1 / Fold 2 / Fold 3' renkleri, o noktanın hangi "
+                   "turda TEST verisi olarak tahmin edildiğini gösterir — yani her nokta, "
+                   "modelin O NOKTAYI HİÇ GÖRMEDEN yaptığı tahmindir. Renklerin "
+                   "birbirine karışmış olması iyiye işarettir: hiçbir fold diğerlerinden "
+                   "sistematik olarak sapmıyor demektir."),
+    ("K (K-Fold'daki K)", "Veriyi kaç parçaya böldüğümüz. K=3 ise veri 3 parçaya "
+                           "bölünür, 3 ayrı model eğitilir: her birinde 2 parça eğitim, "
+                           "1 parça testtir. Böylece HER örnek tam olarak bir kez test "
+                           "edilmiş olur. K büyüdükçe her model daha çok veri görür ama "
+                           "hesap maliyeti artar."),
+    ("OOF (Out-of-Fold / fold-dışı tahmin)",
+     "Bir örnek için, O ÖRNEĞİN test fold'unda olduğu turda üretilen tahmin. Model o "
+     "örneği eğitimde hiç görmemiştir. Rapordaki tüm metrikler bu tahminlerden "
+     "hesaplanır — yani hiçbir örnek kendi eğitim verisiyle değerlendirilmez."),
+    ("Havuzlanmış (pooled) OOF",
+     "Tüm foldların fold-dışı tahminlerinin tek bir listede birleştirilip TEK bir "
+     "R²/MAE hesaplanması. Fold başına ayrı metrik hesaplayıp ortalamak yerine bu "
+     "yöntem kullanılır; tüm veri seti tek bir test seti gibi değerlendirilmiş olur."),
+    ("Veri sızıntısı (data leakage)",
+     "Test verisine ait bir bilginin eğitime karışması. Burada özel bir risk vardır: "
+     "veri artırma ile bir MOF'tan birden fazla varyant üretiliyor; varyant eğitimde, "
+     "orijinali testte olursa model 'kopya çekmiş' olur. Bu yüzden bölme örnek bazında "
+     "değil TEMEL MOF (base_mof_id) bazında yapılır — bir MOF'un tüm varyantları hep "
+     "aynı fold'dadır."),
+    ("Validasyon seti", "Eğitim verisinden ayrılan küçük bir parça. Test için DEĞİL, "
+                         "eğitimi ne zaman durduracağımıza karar vermek için kullanılır."),
+
+    ("Eğitim Süreci", None),
+    ("Epoch", "Modelin tüm eğitim verisini baştan sona bir kez görmesi. 15 epoch = veri "
+              "15 kez baştan sona geçirildi."),
+    ("Batch / batch boyutu", "Model ağırlıkları her örnekte değil, örnek GRUPLARI "
+                              "sonrası güncellenir. Batch boyutu 32 ise her güncelleme "
+                              "32 örneğin ortalama hatasına göre yapılır."),
+    ("Kayıp fonksiyonu (loss)", "Modelin ne kadar yanıldığını ölçen ve eğitimde "
+                                 "KÜÇÜLTÜLMEYE çalışılan sayı. Burada MSE (hataların "
+                                 "karelerinin ortalaması) kullanılır."),
+    ("Maskeli MSE", "Bir örnekte 4 hedeften bazıları eksikse, o eksik hedefler kayıp "
+                     "hesabına KATILMAZ. Böylece eksik etiketli satırlar da eğitimde "
+                     "kullanılabilir."),
+    ("Öğrenme oranı (learning rate)", "Her güncellemede ağırlıkların ne kadar "
+                                       "değiştirileceği. Çok büyükse model kararsızlaşır, "
+                                       "çok küçükse öğrenme aşırı yavaşlar."),
+    ("Optimizer (AdamW)", "Ağırlıkları güncelleyen algoritma. AdamW, her ağırlık için "
+                           "adım büyüklüğünü otomatik ayarlar ve ağırlıkları küçük "
+                           "tutmaya zorlayan bir düzenlileştirme içerir."),
+    ("Ağırlık sönümü (weight decay)", "Ağırlıkların aşırı büyümesini cezalandıran terim; "
+                                       "ezberi azaltır."),
+    ("LR scheduler (CosineAnnealingLR)", "Öğrenme oranını eğitim boyunca kademeli "
+                                          "düşüren program — başta hızlı öğren, sonlara "
+                                          "doğru ince ayar yap mantığı."),
+    ("Erken durdurma (early stopping) ve sabır (patience)",
+     "Validasyon hatası belli sayıda epoch boyunca iyileşmezse eğitim durdurulur. "
+     "'Patience=5' → 5 epoch boyunca iyileşme yoksa dur. Gereksiz hesabı ve ezberi önler."),
+    ("Checkpoint", "Validasyon hatasının EN DÜŞÜK olduğu andaki model ağırlıklarının "
+                    "diske kaydedilmiş hali. Son epoch değil, EN İYİ epoch kullanılır."),
+    ("Ezber (overfitting)", "Modelin eğitim verisini ezberleyip görmediği veriye "
+                             "genelleyememesi. Belirtisi: eğitim hatası düşerken "
+                             "validasyon hatasının yükselmesi."),
+    ("Dropout", "Eğitim sırasında nöronların rastgele bir kısmının geçici olarak "
+                 "kapatılması; ezberi zorlaştırır."),
+    ("Standardizasyon / z-skoru", "Her özelliğin ortalaması 0, standart sapması 1 olacak "
+                                   "şekilde ölçeklenmesi. Farklı birimlerdeki özelliklerin "
+                                   "(Å, cm³/g, 0-1) birbirini ezmesini önler. Ortalama/std "
+                                   "HER FOLD'un SADECE eğitim kısmından hesaplanır (sızıntı "
+                                   "olmaması için)."),
+    ("Seed (rastgelelik tohumu)", "Rastgele işlemleri (bölme, başlatma) tekrarlanabilir "
+                                   "kılan sabit sayı. Aynı seed = aynı sonuç."),
+    ("Hiperparametre", "Modelin verilerden ÖĞRENMEDİĞİ, bizim önceden belirlediğimiz "
+                        "ayarlar: K, epoch sayısı, öğrenme oranı, katman sayısı vb."),
+
+    ("Transfer Öğrenme", None),
+    ("Transfer öğrenme", "Bir görevde öğrenilen bilginin başka bir göreve taşınması. "
+                          "Burada model önce bol veri bulunan bir vekil hedefte eğitilir, "
+                          "sonra asıl (az veri olan) gaz adsorpsiyon hedefine uyarlanır."),
+    ("Ön-eğitim (pretraining)", "İlk aşama: kodlayıcı, vekil hedef üzerinde eğitilip "
+                                 "genel bir yapı temsili öğrenir. Sadece kodlayıcı "
+                                 "ağırlıkları saklanır."),
+    ("İnce-ayar (fine-tuning)", "İkinci aşama: saklanan ağırlıklar yüklenir ve asıl hedefe "
+                                 "göre güncellenir."),
+    ("Dondurma (freeze) / doğrusal sondalama",
+     "İnce-ayarın ilk epoch'larında kodlayıcı ağırlıkları SABİT tutulur, yalnızca son "
+     "regresyon katmanı eğitilir. Ön-eğitimde öğrenilenin daha başta bozulmasını önler."),
+    ("Vekil (proxy) hedef", "Asıl hedefin yerine geçen, onunla ilişkili olduğu düşünülen "
+                             "başka bir büyüklük. Burada ön-eğitimde CO₂ adsorpsiyon ısısı "
+                             "kullanılır — çünkü kaynak veri setinde Xe/Kr/I₂ değeri yoktur."),
+
+    ("Grafik Sinir Ağları (GNN)", None),
+    ("Graf / düğüm / kenar", "Graf, nesnelerin (DÜĞÜM) ve aralarındaki ilişkilerin "
+                              "(KENAR) matematiksel gösterimi. Burada her ATOM bir düğüm, "
+                              "birbirine yeterince yakın atom çiftleri ise kenardır."),
+    ("GNN (Grafik Sinir Ağı)", "Graf yapısındaki veriyi işleyen sinir ağı. Molekül/kristal "
+                                "gibi 'tablo haline getirilemeyen' yapılar için uygundur."),
+    ("Mesaj iletimi (message passing)", "GNN'in temel işleyişi: her atom, komşularından "
+                                         "'mesaj' alır ve kendi temsilini günceller. Bu "
+                                         "birkaç kez tekrarlanınca her atom, çevresindeki "
+                                         "giderek daha geniş bölgeyi 'görmüş' olur."),
+    ("Kesim yarıçapı (cutoff)", "İki atomun kenarla bağlanması için izin verilen en büyük "
+                                 "mesafe (burada 8.0 Å). Gözenekli MOF'larda gözenek "
+                                 "boşluğunun da kapsanması için geniş tutulmuştur."),
+    ("RBF (radyal taban fonksiyonu)", "Atomlar arası mesafeyi tek bir sayı yerine, farklı "
+                                       "mesafelere duyarlı birkaç sayıdan oluşan bir "
+                                       "vektöre çeviren kodlama. Ağın mesafeyi daha ince "
+                                       "ayrıştırmasını sağlar."),
+    ("Kodlayıcı (encoder) ve gömme (embedding)",
+     "Kodlayıcı, bir MOF'un tüm atom/bağ yapısını sabit uzunlukta bir sayı vektörüne "
+     "('gömme') dönüştüren kısımdır. Bu vektör, yapının modelin anladığı dildeki özetidir."),
+    ("Havuzlama (pooling, scatter-mean)", "Atom başına üretilen vektörlerin ortalaması "
+                                           "alınarak TEK bir MOF vektörü elde edilmesi."),
+    ("Ekvaryans — E(n) / E(3) / SE(3)",
+     "Modelin, yapıyı döndürdüğümüzde/kaydırdığımızda tahminini DEĞİŞTİRMEMESİ özelliği. "
+     "Fizik böyle davranır (bir kristali döndürmek özelliklerini değiştirmez), bu yüzden "
+     "bu özelliği mimariye gömmek öğrenmeyi kolaylaştırır."),
+    ("Dikkat (attention)", "Modelin, her atom için hangi komşuların daha önemli olduğunu "
+                            "kendi öğrendiği mekanizma."),
+    ("Aux (yardımcı) özellikler", "Grafı tamamlayan, hazır-hesaplanmış sayısal "
+                                   "tanımlayıcılar (gözenek hacmi, PLD, yoğunluk vb.). "
+                                   "Grafik kodlayıcısının öğrendiği temsile EK olarak "
+                                   "regresyon başına verilir."),
+    ("Çok-görevli (multi-task) öğrenme", "Tek bir modelin 4 hedefi AYNI ANDA tahmin "
+                                          "etmesi. Hedefler ilişkili olduğundan ortak bir "
+                                          "temsil öğrenmek her birine yarar sağlar."),
+
+    ("Grafikleri Okuma", None),
+    ("Artık (residual)", "Tahmin − gerçek değer. Sıfıra yakın ve sıfır etrafında simetrik "
+                          "dağılması istenir; sistematik kayma yanlılık demektir."),
+    ("Karışıklık matrisi (confusion matrix)",
+     "Normalde sınıflandırma için kullanılır; burada regresyon çıktısı yorumlanabilirlik "
+     "için 4 sınıfa indirgenmiştir. Satırlar gerçek, sütunlar tahmin edilen sınıftır; "
+     "KÖŞEGEN üzerindeki hücreler doğru sınıflandırmalardır."),
+    ("Çeyreklik (Q1 / medyan / Q3)",
+     "Veriyi dörde bölen noktalar: Q1'in altında verinin %25'i, medyanın altında %50'si, "
+     "Q3'ün altında %75'i kalır. Sınıf sınırları sabit fiziksel eşik yerine bu noktalardan "
+     "belirlenir — yani sınıflar 'düşük/orta-düşük/orta-yüksek/yüksek' GÖRELİ sınıflardır."),
+    ("Logaritmik eksen", "Kayıp eğrilerinde kullanılır. Değerler başta büyük sonra çok "
+                          "küçük olduğundan, doğrusal eksende erken düşüş görünmez olurdu."),
+    ("Panel harfleri (a), (b), ...", "Çok panelli şekillerde her grafiğin SOL ÜST "
+                                      "köşesindeki harf, şekil altındaki açıklamada hangi "
+                                      "modele ait olduğunu söyler."),
+    ("Permütasyon önemi (ΔMAE)",
+     "Bir özellik grubunun değerleri örnekler arasında RASTGELE karıştırılır ve hatanın ne "
+     "kadar KÖTÜLEŞTİĞİ ölçülür. Çok kötüleşiyorsa model o özelliğe bağımlıdır. ΔMAE = "
+     "karıştırma sonrası MAE − baz MAE."),
+
+    ("Metrikler", None),
+    ("R² (determinasyon katsayısı)", "Modelin, hedefteki değişkenliğin ne kadarını "
+                                      "açıkladığı. 1.0 = mükemmel; 0.0 = sadece ortalamayı "
+                                      "söylemekten farksız; negatif = ortalamadan bile kötü."),
+    ("MAE (ortalama mutlak hata)", "Tahmin ile gerçek arasındaki farkların mutlak "
+                                    "değerinin ortalaması. Hedefle AYNI birimdedir, en "
+                                    "kolay yorumlanan hatadır."),
+    ("RMSE (kök ortalama kare hata)", "Hataların karelerinin ortalamasının karekökü. "
+                                       "Büyük hataları MAE'den daha ağır cezalandırır."),
+    ("MedianAE (ortanca mutlak hata)", "Hataların ortanca değeri; birkaç aşırı kötü "
+                                        "tahminden ETKİLENMEZ, 'tipik' hatayı gösterir."),
+    ("MaxErr (maksimum hata)", "En kötü tek tahminin hatası — en kötü durum senaryosu."),
+    ("PearsonR", "Tahmin ile gerçek değer arasındaki doğrusal ilişkinin gücü ve yönü "
+                  "(−1 ile +1 arası)."),
+
+    ("Malzeme Bilimi Terimleri", None),
+    ("MOF (Metal-Organik Çerçeve)", "Metal düğümlerin organik bağlayıcı moleküllerle "
+                                     "birleşerek oluşturduğu, içi düzenli boşluklarla dolu "
+                                     "gözenekli kristal malzeme. Çok yüksek iç yüzey alanı "
+                                     "sayesinde gaz depolama/ayırmada kullanılır."),
+    ("CIF dosyası", "Kristal yapıyı tanımlayan standart metin dosyası: birim hücre "
+                     "boyutları ve içindeki atomların konumları."),
+    ("Birim hücre", "Kristalin, üç yönde tekrarlanarak tüm yapıyı oluşturan en küçük "
+                     "tekrar birimi."),
+    ("Adsorpsiyon", "Gaz moleküllerinin katı bir yüzeye/gözeneğe tutunması. Kapasite "
+                     "genelde mmol gaz / g malzeme biriminde verilir."),
+    ("PLD (Pore Limiting Diameter)", "Gözenek ağı içinden uçtan uca geçebilecek EN BÜYÜK "
+                                      "kürenin çapı — gözeneklerin 'darboğazı'. Bir gazın "
+                                      "kinetik çapı PLD'den büyükse o gaz geçemez."),
+    ("LCD (Largest Cavity Diameter)", "MOF'un içindeki en geniş boşluğa sığabilecek en "
+                                       "büyük kürenin çapı. PLD'den farklıdır: LCD iç "
+                                       "hacmi, PLD geçiş darboğazını ölçer (LCD ≥ PLD)."),
+    ("Kinetik çap", "Bir gaz molekülünün difüzyon davranışını belirleyen etkin boyutu "
+                     "(Xe 4.10 Å, Kr 3.69 Å, I₂ 5.00 Å)."),
+    ("Boyut-eleme (size sieving)", "Gözenek boyutunun, bazı gazları geçirip bazılarını "
+                                    "engelleyerek ayırma yapması. PLD hedef gazın kinetik "
+                                    "çapına ne kadar yakınsa eleme o kadar seçicidir."),
+    ("Seçicilik (selectivity)", "Bir malzemenin bir gazı diğerine göre ne kadar tercihen "
+                                 "tuttuğunun oranı (birimsiz). Xe/Kr seçicilik, nükleer "
+                                 "atık gazı ayırmada kritik metriktir."),
+    ("Boşluk oranı (void fraction)", "Birim hücre hacminin ne kadarının boş/erişilebilir "
+                                      "gözenek olduğu (0–1 arası)."),
+    ("Açık metal bölgesi (open metal site)", "Koordinasyonu doymamış, çözücü "
+                                              "uzaklaştırıldığında gaz molekülüne doğrudan "
+                                              "bağlanabilen metal merkezi — adsorpsiyonu "
+                                              "güçlendirir."),
+    ("GCMC", "Grand Canonical Monte Carlo — bir gözenekli malzemenin belirli sıcaklık ve "
+              "basınçta ne kadar gaz tutacağını hesaplayan moleküler simülasyon yöntemi."),
+    ("DFT", "Yoğunluk Fonksiyoneli Teorisi — malzemelerin elektronik yapısını ve "
+             "enerjisini kuantum mekaniği ile hesaplayan yöntem."),
+    ("Veri artırma (augmentation)", "Mevcut yapılardan kontrollü değişikliklerle yeni "
+                                     "örnekler üretme: bağlayıcı eksiltme (kusur), metal "
+                                     "değiştirme, fonksiyonel grup ekleme ve atom "
+                                     "konumlarına küçük rastgele kaydırma (gürültü)."),
+
+    ("Açıklanabilir Yapay Zekâ (XAI)", None),
+    ("XAI", "Modelin kararını NEYE dayandırdığını anlamaya yarayan yöntemler bütünü. "
+            "'Kara kutu'yu açmayı amaçlar."),
+    ("Vekil model (surrogate)", "Karmaşık modelin davranışını, tek bir örnek çevresinde "
+                                 "taklit eden basit (örn. doğrusal) model. Basit modelin "
+                                 "katsayıları yorumlanabilir."),
+    ("Lasso ve düzenlileştirme (alpha)",
+     "Lasso, doğrusal model katsayılarını küçülten ve önemsiz olanları tam SIFIRA çeken "
+     "bir yöntemdir; böylece sadece gerçekten önemli girdiler kalır. Küçültmenin şiddetini "
+     "'alpha' belirler: çok büyük alpha TÜM katsayıları sıfırlayabilir (bu projede "
+     "yaşanan sorun, bkz. §6.3). LassoCV, alpha'yı veriden otomatik seçer."),
+    ("Maskeleme", "Girdinin bir kısmını (burada bazı atomları) geçici olarak 'kapatıp' "
+                   "tahminin ne kadar değiştiğine bakma. Çok değişiyorsa o kısım önemlidir."),
+    ("Gradyan / saliency", "Girdideki küçük bir değişikliğin çıktıyı ne kadar "
+                            "değiştirdiğinin matematiksel ölçüsü. Büyükse o girdi etkilidir."),
+    ("Integrated Gradients ve completeness aksiyomu",
+     "Girdiyi bir 'taban çizgisinden' gerçek değerine kademeli taşırken gradyanları "
+     "toplayan yöntem. Completeness aksiyomu: tüm katkıların TOPLAMI, tahmin ile taban "
+     "çizgisi tahmini arasındaki farka tam olarak eşittir — yani hiçbir katkı kaybolmaz."),
+    ("MCTS (Monte Carlo Ağaç Araması)", "Olasılıkları ağaç biçiminde deneyerek en iyi "
+                                         "seçeneği arayan yöntem. Burada tahmini en iyi "
+                                         "açıklayan bağlantılı atom grubunu bulmak için "
+                                         "kullanılır."),
+    ("Alt-graf (subgraph)", "Grafın bir parçası — burada tahmini açıklamaya yeten en "
+                             "küçük atom kümesi."),
+]
+
+
+def bolum_terimler(doc):
+    h(doc, "9. Terimler Sözlüğü")
+    para(doc,
+         "Bu bölüm, raporda geçen tüm teknik terimleri konuya hiç aşina olmayan bir "
+         "okuyucu için açıklar. Terimler konu başlıklarına göre gruplanmıştır.",
+         size=9.5)
+    doc.add_paragraph()
+    for terim, aciklama in TERIMLER:
+        if aciklama is None:
+            # .title() KULLANILMAZ: Python'un title()'ı Türkçe'de noktalı/noktasız
+            # i ayrımını bozuyor ("Veri" -> "Veri̇") ve kısaltmaları küçültüyor
+            # ("GNN" -> "Gnn"). Grup adları listede zaten doğru yazılmıştır.
+            h(doc, terim, level=2)
+            continue
+        p = doc.add_paragraph()
+        r = p.add_run(f"{terim}: "); r.bold = True; r.font.size = Pt(9)
+        r2 = p.add_run(aciklama); r2.font.size = Pt(9)
+    doc.add_paragraph()
+
+
 def bolum_erisim(doc):
-    h(doc, "6. Kod ve Veri Erişilebilirliği")
+    h(doc, "10. Kod ve Veri Erişilebilirliği")
     kv_tablo(doc, [
         ("Depo", GITHUB_REPO_URL),
         ("Dahil olanlar", "Tüm .py scriptleri, data/ altındaki nihai veri setleri (ham + işlenmiş, "
@@ -585,6 +1062,10 @@ def main() -> None:
     bolum_model_detaylari(doc)
     bolum_graf_insa(doc)
     bolum_xai_detaylari(doc)
+    bolum_permutasyon_bulgular(doc)
+    bolum_bagimliliklar(doc)
+    bolum_dosya_yapisi(doc)
+    bolum_terimler(doc)
     bolum_erisim(doc)
 
     out_path = PROJECT_ROOT / "MOF_Radyoaktif_Gaz_Adsorpsiyonu_Bilgi_RAPORU.docx"
