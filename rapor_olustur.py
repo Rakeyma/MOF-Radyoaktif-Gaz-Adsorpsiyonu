@@ -505,7 +505,7 @@ def bolum_karsilastirma_tablosu(doc):
 def _bolum_terimler(doc, meta) -> None:
     """Bu raporu ve grafiklerini okumak için gereken terimler, konuya aşina
     OLMAYAN bir okuyucu için açıklanır. Tam sözlük (eğitim süreci, GNN
-    mimarisi, malzeme bilimi, XAI terimleri dahil) Bilgi Raporu §9'dadır."""
+    mimarisi, malzeme bilimi, XAI terimleri dahil) Bilgi Raporu §10'dadır."""
     k = meta["k_folds"] if meta else "K"
     add_paragraph(doc, "Terim Açıklamaları (bu raporu okumak için):", size=10, bold=True, indent=True)
     for terim, aciklama in [
@@ -554,7 +554,7 @@ def _bolum_terimler(doc, meta) -> None:
         "Eğitim süreci (epoch, batch, erken durdurma, transfer öğrenme), GNN mimarisi "
         "(mesaj iletimi, gömme, ekvaryans), malzeme bilimi (MOF, PLD, LCD, boyut-eleme, "
         "GCMC) ve XAI (Lasso, maskeleme, Integrated Gradients) terimlerinin tam "
-        "açıklamaları Bilgi Raporu §9 'Terimler Sözlüğü'ndedir.", size=9, indent=True)
+        "açıklamaları Bilgi Raporu §10 'Terimler Sözlüğü'ndedir.", size=9, indent=True)
 
 
 def _tablo_yorumu(doc, overall: pd.DataFrame, df: pd.DataFrame) -> None:

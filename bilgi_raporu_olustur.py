@@ -191,6 +191,7 @@ def bolum_veri_seti(doc):
 
     _bolum_kapsam_notu(doc)
     _bolum_sutun_gruplari(doc)
+    _bolum_ornek_sayilari(doc)
     _bolum_capraz_dogrulama(doc)
 
 
@@ -301,8 +302,50 @@ def _bolum_sutun_gruplari(doc):
     doc.add_paragraph()
 
 
+def _bolum_ornek_sayilari(doc):
+    """Hedef başına kaç etiketli örnek olduğu — 'her amaçta kaç veri var'
+    sorusunun doğrudan cevabı."""
+    h(doc, "1.4 Hedef (Amaç) Başına Örnek Sayısı", level=2)
+    if not GAS_FINETUNE_CSV.exists():
+        para(doc, "[Henüz üretilmedi.]", size=9)
+        return
+    df = pd.read_csv(GAS_FINETUNE_CSV, low_memory=False)
+    if "eslesme_durumu" in df.columns:
+        df = df[df["eslesme_durumu"] == "TAM"]
+    para(doc,
+         f"Bu proje ÇOK-GÖREVLİ (multi-task) bir modeldir: tek bir model, dört "
+         f"hedefi AYNI ANDA tahmin eder. Bu nedenle hedefler için AYRI veri "
+         f"kümeleri veya ayrı bölmeler YOKTUR — dördü de aynı {len(df)} örnek "
+         f"üzerinde, aynı fold bölmesiyle eğitilir. Aşağıdaki tablo her hedef "
+         f"için kaç örneğin etiketli olduğunu gösterir.", size=9.5)
+    doc.add_paragraph()
+    satirlar = []
+    for kol in TARGET_COLUMNS:
+        dolu = int(df[kol].notna().sum()) if kol in df.columns else 0
+        satirlar.append((kol, f"{dolu} / {len(df)} örnek etiketli "
+                              f"(%{100 * dolu / max(len(df), 1):.0f}); eksik: {len(df) - dolu}"))
+    satirlar.append(("TOPLAM örnek", f"{len(df)} satır = {df['base_mof_id'].nunique()} temel MOF × "
+                                      f"(1 orijinal + {N_AUGMENT_PER_BASE} artırılmış varyant)"))
+    if "is_augmented" in df.columns:
+        satirlar.append(("Orijinal / artırılmış",
+                         f"{int((~df['is_augmented']).sum())} orijinal + "
+                         f"{int(df['is_augmented'].sum())} artırılmış"))
+    kv_tablo(doc, satirlar)
+    eksik_var = any(df[k].isna().any() for k in TARGET_COLUMNS if k in df.columns)
+    para(doc,
+         ("Dört hedefin tamamı her satırda doludur; dolayısıyla maskeli MSE "
+          "mekanizması (eksik hedefleri kayıptan düşürme) bu koşumda fiilen "
+          "devreye girmemiştir — ancak seyrek etiketli bir veri setine "
+          "geçildiğinde çalışmaya hazırdır."
+          if not eksik_var else
+          "Bazı hedefler bazı satırlarda eksiktir; maskeli MSE sayesinde bu "
+          "satırlar yine de eğitimde kullanılır, eksik hedef kayba katılmaz."),
+         size=9.5)
+    doc.add_paragraph()
+
+
 def _bolum_capraz_dogrulama(doc):
-    h(doc, "1.4 Çapraz Doğrulama Stratejisi", level=2)
+    h(doc, "1.5 Çapraz Doğrulama Stratejisi ve Veri Bölme Oranları", level=2)
     para(doc,
          "Veri artırma her temel MOF'tan birden fazla varyant ürettiğinden "
          "(defect / substitution / functional-group / gaussian-noise), bir MOF'un "
@@ -327,6 +370,168 @@ def _bolum_capraz_dogrulama(doc):
         ("Seyrek etiket toleransı", "Maskeli MSE — bir örnekte eksik olan hedef kayıp hesabına "
                                      "KATILMAZ (4 hedefin hepsi her satırda dolu olmayabilir)"),
     ])
+
+    h(doc, "1.5.1 Her Fold'da Veri Kaça Kaç Ayrılıyor", level=3)
+    kdf = None
+    if egitilmis:
+        f = PROJECT_ROOT / egitilmis[0] / "sonuclar" / "kfold_metrikleri.csv"
+        if f.exists():
+            kdf = pd.read_csv(f)
+    if kdf is not None and {"n_grup_train", "n_grup_val", "n_grup_test"}.issubset(kdf.columns):
+        tr, va, te = (int(kdf["n_grup_train"].iloc[0]), int(kdf["n_grup_val"].iloc[0]),
+                      int(kdf["n_grup_test"].iloc[0]))
+        top = tr + va + te
+        kat = (N_AUGMENT_PER_BASE + 1)
+        para(doc,
+             f"Bölme TEMEL MOF sayısı üzerinden yapılır; her temel MOF 1 orijinal + "
+             f"{N_AUGMENT_PER_BASE} artırılmış varyantla toplam {kat} örneğe karşılık "
+             f"gelir. Aşağıdaki sayılar gerçek koşumun kfold_metrikleri.csv "
+             f"dosyasından okunmuştur.", size=9.5)
+        doc.add_paragraph()
+        kv_tablo(doc, [
+            ("Test (fold-dışı)", f"{te} temel MOF (%{100 * te / top:.0f}) ≈ {te * kat} örnek — "
+                                  f"K={meta['k_folds']} olduğundan her fold verinin 1/{meta['k_folds']}'ini "
+                                  f"test olarak ayırır"),
+            ("Eğitim", f"{tr} temel MOF (%{100 * tr / top:.0f}) ≈ {tr * kat} örnek"),
+            ("Validasyon", f"{va} temel MOF (%{100 * va / top:.0f}) ≈ {va * kat} örnek — "
+                            f"test DIŞINDA kalan {tr + va} MOF'un %15'i "
+                            f"(GroupShuffleSplit, yine MOF bazında)"),
+            ("TOPLAM", f"{top} temel MOF ≈ {top * kat} örnek"),
+            ("Özet gösterim", f"İnce-ayar: her fold için %{100 * tr / top:.0f} eğitim / "
+                               f"%{100 * va / top:.0f} validasyon / %{100 * te / top:.0f} test, "
+                               f"{meta['k_folds']}-katlı gruplanmış çapraz doğrulama"),
+            ("Ön-eğitim (ayrı aşama)",
+             "K-Fold YAPILMAZ — basit tek bölme: %90 eğitim / %10 validasyon "
+             "(PRETRAIN_VAL_FRAC=0.1). Amaç nihai değerlendirme değil, genellenebilir "
+             "bir yapı temsili öğrenmek olduğundan çapraz doğrulamaya gerek yoktur"),
+        ])
+        para(doc,
+             "ÖNEMLİ: dört hedef için AYRI bölme yapılmaz. Model çok-görevli "
+             "olduğundan tek bir bölme tüm hedefler için ortaktır; yani "
+             "'1. amaç için şu oran, 2. amaç için bu oran' şeklinde bir ayrım "
+             "YOKTUR — dört hedef de yukarıdaki aynı bölmeyi kullanır.", size=9.5)
+        doc.add_paragraph()
+    else:
+        para(doc, "[Henüz üretilmedi: kfold_metrikleri.csv]", size=9)
+
+
+def bolum_hiperparametre_secimi(doc):
+    """Kullanıcı sorusu: 'hiperparametre optimizasyonu için ne kullandık',
+    '5 fold için neyi maksimize ediyoruz', 'hangi epoch'ta kesmeliyiz'.
+    DÜRÜSTLÜK: bu projede sistematik bir hiperparametre ARAMASI YAPILMAMIŞTIR;
+    bunu olduğu gibi yazmak gerekir."""
+    h(doc, "3. Hiperparametre Seçimi, Erken Durdurma ve Model Seçimi")
+
+    h(doc, "3.1 Hiperparametre Optimizasyonu Yapıldı mı?", level=2)
+    para(doc,
+         "HAYIR — bu koşumda sistematik bir hiperparametre araması "
+         "(grid search, random search, Bayesçi optimizasyon, Optuna vb.) "
+         "YAPILMAMIŞTIR. Katman sayısı, öğrenme oranı, batch boyutu, gizli "
+         "katman genişliği, dropout gibi değerler SABİT olarak belirlenmiş ve "
+         "tüm modellerde aynı tutulmuştur. Bunun nedeni, projenin amacının "
+         "'en iyi hiperparametreyi bulmak' değil, FARKLI MİMARİLERİ ADİL "
+         "KOŞULLARDA KARŞILAŞTIRMAK olmasıdır: tüm mimariler aynı eğitim "
+         "bütçesini ve aynı ayarları paylaşırsa, aradaki fark mimariden gelir, "
+         "ayar farkından değil.", size=9.5)
+    doc.add_paragraph()
+    para(doc,
+         "Bu, raporlanan skorların yorumlanmasında dikkate alınmalıdır: her "
+         "mimari kendi optimal ayarlarıyla değil, ORTAK bir ayar setiyle "
+         "çalışmıştır. Bir mimarinin burada düşük skor alması, ayarları "
+         "kendisine göre optimize edilseydi de düşük kalacağı anlamına gelmez.",
+         size=9.5)
+    doc.add_paragraph()
+    kv_tablo(doc, [
+        ("Elle sabitlenen (aranmayan)",
+         "n_layers, hidden_dim, emb_dim, dropout, learning rate, weight decay, "
+         "batch size, cutoff, K, max epoch, patience, freeze süresi"),
+        ("Veriden SEÇİLEN tek şey — 1",
+         "Durdurma epoch'u: her fold için validasyon MAE'sinin en düşük olduğu "
+         "epoch seçilir (erken durdurma, bkz. §3.2)"),
+        ("Veriden SEÇİLEN tek şey — 2",
+         "GraphLIME'ın Lasso düzenlileştirme katsayısı (alpha): her örnek için "
+         "çapraz doğrulamayla (LassoCV) seçilir. Bu bir XAI yöntemi "
+         "hiperparametresidir, GNN'in değil"),
+        ("Gelecek çalışma", "Mimari başına ayrı hiperparametre araması, bu "
+                             "karşılaştırmanın doğal bir sonraki adımıdır"),
+    ])
+
+    h(doc, "3.2 K-Fold'da Ne Optimize Ediliyor?", level=2)
+    para(doc,
+         "Sık karşılaşılan bir yanlış anlamayı önlemek gerekir: K-Fold çapraz "
+         "doğrulama bir OPTİMİZASYON yöntemi DEĞİL, bir ÖLÇME yöntemidir. "
+         "Fold'lar bir şeyi 'maksimize etmek' için kullanılmaz; modelin "
+         "görmediği veriye ne kadar genellediğini YANSIZ ölçmek için "
+         "kullanılır. Üç ayrı düzeyde üç ayrı şey olur:", size=9.5)
+    doc.add_paragraph()
+    kv_tablo(doc, [
+        ("1) Eğitim içinde (her epoch)",
+         "MİNİMİZE EDİLEN: eğitim kümesindeki maskeli MSE kaybı. Bunu yapan "
+         "AdamW optimizer'dır; ağırlıklar bu kaybın gradyanına göre güncellenir"),
+        ("2) Epoch seçiminde (fold içinde)",
+         "MİNİMİZE EDİLEN: VALİDASYON MAE'si (4 hedefin ortalaması, 'overall'). "
+         "Validasyon MAE'sinin en düşük olduğu epoch'un ağırlıkları saklanır; "
+         "son epoch DEĞİL, en iyi epoch kullanılır"),
+        ("3) Fold'lar arasında (K-Fold'un kendisi)",
+         "HİÇBİR ŞEY optimize edilmez. Fold'lar yalnızca her örneğin bir kez "
+         "test edilmesini sağlar; sonra tüm foldların fold-dışı tahminleri "
+         "havuzlanıp tek bir R²/MAE hesaplanır. Bu, raporlanan nihai skordur"),
+        ("Test verisi", "Hiçbir aşamada hiçbir karar için KULLANILMAZ — ne ağırlık "
+                         "güncellemesinde, ne epoch seçiminde. Yalnızca en sonda "
+                         "ölçüm için okunur"),
+    ])
+
+    h(doc, "3.3 Eğitim Hangi Epoch'ta Kesilmeli?", level=2)
+    egitilmis = _egitilmis_modeller()
+    meta = _metrikler(egitilmis[0]) if egitilmis else None
+    hp = meta["hiperparametreler"] if meta else {}
+    epochlar, model_epoch = [], []
+    for m in egitilmis:
+        f = PROJECT_ROOT / m / "sonuclar" / "kfold_metrikleri.csv"
+        if not f.exists():
+            continue
+        kk = pd.read_csv(f)
+        if "en_iyi_epoch" in kk.columns:
+            lst = [int(x) for x in kk["en_iyi_epoch"]]
+            epochlar += lst
+            model_epoch.append((m, ", ".join(map(str, lst))))
+    para(doc,
+         f"Bu soruya elle karar verilmez — erken durdurma mekanizması her fold "
+         f"için ayrı ayrı karar verir: validasyon MAE'si "
+         f"{hp.get('early_stop_patience', '—')} epoch boyunca iyileşmezse eğitim "
+         f"durdurulur ve EN İYİ epoch'un ağırlıkları geri yüklenir. Üst sınır "
+         f"{hp.get('max_epochs', '—')} epoch'tur.", size=9.5)
+    doc.add_paragraph()
+    if epochlar:
+        import numpy as _np
+        tavana_deyen = sum(1 for e in epochlar if e >= (hp.get("max_epochs") or 10**9))
+        kv_tablo(doc, [
+            ("Gerçekleşen en iyi epoch aralığı",
+             f"{min(epochlar)} – {max(epochlar)} (ortalama {_np.mean(epochlar):.1f}, "
+             f"medyan {int(_np.median(epochlar))}) — {len(epochlar)} fold koşumu üzerinden"),
+            ("Pratik cevap",
+             f"Bu veri setinde eğitim tipik olarak {int(_np.median(epochlar))}. epoch "
+             f"civarında kesilmektedir; {hp.get('max_epochs', '—')} epoch'luk üst sınır "
+             f"çoğu fold için fazlasıyla yeterlidir"),
+            ("Üst sınıra dayanan fold sayısı",
+             f"{tavana_deyen} / {len(epochlar)}" +
+             (" — bu fold(lar) erken durdurmaya hiç takılmadan üst sınırda bitmiştir, "
+              "yani daha uzun eğitimle İYİLEŞMEYE DEVAM EDEBİLİRLERDİ; max epoch "
+              "artırılarak kontrol edilmesi önerilir"
+              if tavana_deyen else
+              " — hiçbir fold üst sınıra dayanmadı, yani max epoch kısıtlayıcı "
+              "olmamıştır (eğitim kendiliğinden yakınsamıştır)")),
+            ("Nasıl anlaşılır (grafikten)",
+             "Sonuç Raporu §2.5'teki kayıp eğrilerinde, validasyon (kesikli) "
+             "çizgisinin en alçak noktası o fold'un seçilen epoch'udur. Bu "
+             "noktadan sonra validasyon çizgisi yükselirken eğitim çizgisi "
+             "düşmeye devam ediyorsa, orası ezberin başladığı yerdir"),
+        ])
+        if model_epoch:
+            h(doc, "3.3.1 Model ve Fold Bazında Seçilen Epoch'lar", level=3)
+            kv_tablo(doc, [(m, f"fold başına: {e}") for m, e in model_epoch])
+    else:
+        para(doc, "[Henüz üretilmedi: kfold_metrikleri.csv]", size=9)
 
 
 # ---------------------------------------------------------------------------
@@ -406,10 +611,10 @@ def bolum_egitim_cercevesi(doc):
 
 
 # ---------------------------------------------------------------------------
-# §3 MODEL TEKNİK DETAYLARI
+# §4 MODEL TEKNİK DETAYLARI
 # ---------------------------------------------------------------------------
 def bolum_model_detaylari(doc):
-    h(doc, "3. Model Teknik Detayları")
+    h(doc, "4. Model Teknik Detayları")
     df_yol = PROJECT_ROOT / "model_karsilastirma_sonuclari.csv"
     sira = {}
     if df_yol.exists():
@@ -428,7 +633,7 @@ def bolum_model_detaylari(doc):
     for i, model_adi in enumerate(egitilmis, 1):
         meta = _metrikler(model_adi)
         hp = meta["hiperparametreler"]
-        h(doc, f"3.{i} {model_adi}", level=2)
+        h(doc, f"4.{i} {model_adi}", level=2)
         tur, graf = MIMARI_TURU.get(model_adi, ("—", "—"))
         mimari_ozgu = ", ".join(f"{k}={v}" for k, v in hp.items()
                                 if k in ("n_layers", "heads", "l_max", "max_degree", "hidden"))
@@ -450,7 +655,7 @@ def bolum_model_detaylari(doc):
 
     egitilmemis = [m for m in MODEL_KLASORLERI if m not in egitilmis]
     if egitilmemis:
-        h(doc, f"3.{len(egitilmis) + 1} Eğitilmemiş Mimariler", level=2)
+        h(doc, f"4.{len(egitilmis) + 1} Eğitilmemiş Mimariler", level=2)
         para(doc,
              f"{', '.join(egitilmemis)} depoda tam olarak implemente edilmiştir "
              f"(run_*.py + grafik.py mevcuttur) ancak bu koşumda eğitilmemiştir; "
@@ -461,10 +666,10 @@ def bolum_model_detaylari(doc):
 
 
 # ---------------------------------------------------------------------------
-# §4 GRAF İNŞA STRATEJİSİ
+# §5 GRAF İNŞA STRATEJİSİ
 # ---------------------------------------------------------------------------
 def bolum_graf_insa(doc):
-    h(doc, "4. Graf İnşa Stratejisi")
+    h(doc, "5. Graf İnşa Stratejisi")
     para(doc,
          f"Tüm modeller ortak bir graf inşa modülünü (graf_ozellik_ortak.py) "
          f"paylaşır: CIF dosyasından periyodik 3B yarıçap grafiği kurulur — her atom "
@@ -484,12 +689,12 @@ def bolum_graf_insa(doc):
         ("Havuzlama", "scatter-mean (atom → MOF) — graf düzeyinde tek bir gömme vektörü"),
         ("Grafik boyutu", "Bu veri setinde MOF başına yaklaşık 72–172 atom — GraphLIME gibi "
                            "maskeleme tabanlı XAI yöntemlerinin ölçek duyarlılığı bakımından "
-                           "belirleyici bir büyüklüktür (bkz. §5.1)"),
+                           "belirleyici bir büyüklüktür (bkz. §7.3)"),
     ])
 
 
 # ---------------------------------------------------------------------------
-# §5 XAI TEKNİK DETAYLARI
+# §6 XAI TEKNİK DETAYLARI
 # ---------------------------------------------------------------------------
 XAI_DETAY = {
     "GraphLIME": [
@@ -539,7 +744,7 @@ XAI_DETAY = {
 
 
 def bolum_xai_detaylari(doc):
-    h(doc, "5. XAI (Açıklanabilir Yapay Zekâ) Teknik Detayları")
+    h(doc, "6. XAI (Açıklanabilir Yapay Zekâ) Teknik Detayları")
     egitilmis = _egitilmis_modeller()
     para(doc,
          f"Dört XAI yönteminin tamamı, eğitilmiş {len(egitilmis)} model arasında en "
@@ -550,18 +755,18 @@ def bolum_xai_detaylari(doc):
          size=9.5)
     doc.add_paragraph()
     for i, xai_adi in enumerate(XAI_KLASORLERI, 1):
-        h(doc, f"5.{i} {xai_adi}", level=2)
+        h(doc, f"6.{i} {xai_adi}", level=2)
         kv_tablo(doc, XAI_DETAY.get(xai_adi, [("—", "—")]))
 
 
 # ---------------------------------------------------------------------------
-# §6 KOD VE VERİ ERİŞİLEBİLİRLİĞİ
+# §11 KOD VE VERİ ERİŞİLEBİLİRLİĞİ
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-# §6 PERMÜTASYON ÖNEMİ VE PROJEYE ÖZGÜ TEKNİK BULGULAR
+# §7 PERMÜTASYON ÖNEMİ VE PROJEYE ÖZGÜ TEKNİK BULGULAR
 # ---------------------------------------------------------------------------
 def bolum_permutasyon_bulgular(doc):
-    h(doc, "6. Permütasyon Önemi ve Projeye Özgü Teknik Bulgular")
+    h(doc, "7. Permütasyon Önemi ve Projeye Özgü Teknik Bulgular")
     para(doc,
          "Kristal gömmesi ve aux özellik vektörü fold başına ÖNCEDEN hesaplanır "
          "(precompute), permütasyon SADECE hafif regresyon başı üzerinde koşulur — "
@@ -569,7 +774,7 @@ def bolum_permutasyon_bulgular(doc):
          "yeniden çalıştırmadan yapılabilir.", size=9.5)
     doc.add_paragraph()
 
-    h(doc, "6.1 Ortak Permütasyon Yöntemi", level=2)
+    h(doc, "7.1 Ortak Permütasyon Yöntemi", level=2)
     egitilmis = _egitilmis_modeller()
     meta = _metrikler(egitilmis[0]) if egitilmis else None
     skorlar_tum = {}
@@ -607,7 +812,7 @@ def bolum_permutasyon_bulgular(doc):
          "(§1.2), dolayısıyla 3B atomistik geometri ek bilgi taşımamaktadır"),
     ])
 
-    h(doc, "6.2 Gözeneklilik – Seçicilik Fiziksel Tutarlılığı", level=2)
+    h(doc, "7.2 Gözeneklilik – Seçicilik Fiziksel Tutarlılığı", level=2)
     r_gercek, r_tahmin = [], []
     for m in egitilmis:
         f = PROJECT_ROOT / m / "sonuclar" / "test_tahminleri_oof.csv"
@@ -647,7 +852,7 @@ def bolum_permutasyon_bulgular(doc):
          "dönüşecektir"),
     ])
 
-    h(doc, "6.3 GraphLIME'da Ölçek Duyarlılığı (bu projeye özgü bulgu)", level=2)
+    h(doc, "7.3 GraphLIME'da Ölçek Duyarlılığı (bu projeye özgü bulgu)", level=2)
     kv_tablo(doc, [
         ("Belirti", "GraphLIME'ın ürettiği TÜM atom önem katsayıları tam olarak "
                      "0.0 çıkıyor, açıklama grafikleri tamamen boş görünüyordu "
@@ -674,10 +879,10 @@ def bolum_permutasyon_bulgular(doc):
 
 
 # ---------------------------------------------------------------------------
-# §7 YAZILIM VE KÜTÜPHANE BAĞIMLILIKLARI
+# §8 YAZILIM VE KÜTÜPHANE BAĞIMLILIKLARI
 # ---------------------------------------------------------------------------
 def bolum_bagimliliklar(doc):
-    h(doc, "7. Yazılım ve Kütüphane Bağımlılıkları")
+    h(doc, "8. Yazılım ve Kütüphane Bağımlılıkları")
     import importlib.metadata as md
 
     kullanim = [
@@ -718,10 +923,10 @@ def bolum_bagimliliklar(doc):
 
 
 # ---------------------------------------------------------------------------
-# §8 PROJE DOSYA YAPISI
+# §9 PROJE DOSYA YAPISI
 # ---------------------------------------------------------------------------
 def bolum_dosya_yapisi(doc):
-    h(doc, "8. Proje Dosya Yapısı")
+    h(doc, "9. Proje Dosya Yapısı")
     para(doc, "Paylaşılan modüller proje kökünde, her model/XAI yöntemi kendi "
                "klasöründe aynı iskeleti takip eder:", size=9.5)
     agac = f"""MOF Radyoaktif Gaz Adsorpsiyonu/
@@ -776,9 +981,42 @@ def bolum_dosya_yapisi(doc):
 
 
 # ---------------------------------------------------------------------------
-# §9 TERİMLER SÖZLÜĞÜ
+# §10 TERİMLER SÖZLÜĞÜ
 # ---------------------------------------------------------------------------
 TERIMLER = [
+    ("Temel Kavramlar", None),
+    ("Makine öğrenmesi (ML — Machine Learning)",
+     "Bilgisayarın, kuralları elle yazılmadan, ÖRNEKLERDEN kural çıkarmasıdır. "
+     "Klasik programlamada 'eğer gözenek hacmi şundan büyükse kapasite şudur' gibi "
+     "kuralları insan yazar; makine öğrenmesinde ise binlerce (yapı → ölçüm) çifti "
+     "verilir ve aradaki ilişkiyi model kendisi bulur. Bu projede amaç, bir MOF'un "
+     "yapısına bakarak gaz adsorpsiyon değerlerini tahmin eden bir model "
+     "öğrenmektir."),
+    ("Denetimli öğrenme (supervised learning)",
+     "Her örnek için doğru cevabın ('etiket') verildiği öğrenme türü. Model tahmin "
+     "yapar, doğru cevapla karşılaştırılır, aradaki farka göre düzeltilir. Bu "
+     "projede etiketler dört hedefin sayısal değerleridir."),
+    ("Regresyon / sınıflandırma",
+     "Regresyon SAYISAL bir değer tahmin eder (örn. 0.17 mmol/g); sınıflandırma ise "
+     "KATEGORİ tahmin eder (örn. 'yüksek kapasiteli'). Bu proje bir regresyon "
+     "problemidir; karışıklık matrisi grafiklerinde sonuçlar yalnızca "
+     "yorumlanabilirlik için dört sınıfa indirgenir."),
+    ("Model / eğitim (training)",
+     "Model, girdiden çıktıya giden ve içinde ayarlanabilir sayılar ('ağırlıklar') "
+     "bulunan matematiksel yapıdır. Eğitim, bu ağırlıkların örneklerdeki hatayı "
+     "küçültecek şekilde adım adım güncellenmesi sürecidir."),
+    ("Etiket (label) / hedef (target)",
+     "Modelin tahmin etmeye çalıştığı doğru cevap. Bu projede dört hedef vardır ve "
+     "ÖNEMLİ: bu koşumda etiketler deneysel ölçüm değil, bir formülle üretilmiş "
+     "sentetik değerlerdir (bkz. §1.2)."),
+    ("Özellik (feature) / girdi",
+     "Modele verilen bilgiler. Burada iki tür girdi vardır: (1) MOF'un 3B atom "
+     "yapısı (graf olarak), (2) hazır-hesaplanmış sayısal tanımlayıcılar "
+     "(gözenek hacmi, PLD vb. — 'aux özellikler')."),
+    ("Genelleme (generalization)",
+     "Modelin, eğitimde HİÇ GÖRMEDİĞİ yeni örneklerde de doğru tahmin yapabilmesi. "
+     "Makine öğrenmesinin asıl amacı budur; eğitim verisini ezberlemek değil."),
+
     ("Çapraz Doğrulama ve Veri Bölme", None),
     ("Fold (kat)", "Veri setinin eşit parçalarından biri. Veriyi K parçaya bölüp her "
                    "parçayı sırayla 'test', kalanları 'eğitim' olarak kullanırız. "
@@ -990,7 +1228,7 @@ TERIMLER = [
      "Lasso, doğrusal model katsayılarını küçülten ve önemsiz olanları tam SIFIRA çeken "
      "bir yöntemdir; böylece sadece gerçekten önemli girdiler kalır. Küçültmenin şiddetini "
      "'alpha' belirler: çok büyük alpha TÜM katsayıları sıfırlayabilir (bu projede "
-     "yaşanan sorun, bkz. §6.3). LassoCV, alpha'yı veriden otomatik seçer."),
+     "yaşanan sorun, bkz. §7.3). LassoCV, alpha'yı veriden otomatik seçer."),
     ("Maskeleme", "Girdinin bir kısmını (burada bazı atomları) geçici olarak 'kapatıp' "
                    "tahminin ne kadar değiştiğine bakma. Çok değişiyorsa o kısım önemlidir."),
     ("Gradyan / saliency", "Girdideki küçük bir değişikliğin çıktıyı ne kadar "
@@ -1009,7 +1247,7 @@ TERIMLER = [
 
 
 def bolum_terimler(doc):
-    h(doc, "9. Terimler Sözlüğü")
+    h(doc, "10. Terimler Sözlüğü")
     para(doc,
          "Bu bölüm, raporda geçen tüm teknik terimleri konuya hiç aşina olmayan bir "
          "okuyucu için açıklar. Terimler konu başlıklarına göre gruplanmıştır.",
@@ -1029,7 +1267,7 @@ def bolum_terimler(doc):
 
 
 def bolum_erisim(doc):
-    h(doc, "10. Kod ve Veri Erişilebilirliği")
+    h(doc, "11. Kod ve Veri Erişilebilirliği")
     kv_tablo(doc, [
         ("Depo", GITHUB_REPO_URL),
         ("Dahil olanlar", "Tüm .py scriptleri, data/ altındaki nihai veri setleri (ham + işlenmiş, "
@@ -1059,6 +1297,7 @@ def main() -> None:
 
     bolum_veri_seti(doc)
     bolum_egitim_cercevesi(doc)
+    bolum_hiperparametre_secimi(doc)
     bolum_model_detaylari(doc)
     bolum_graf_insa(doc)
     bolum_xai_detaylari(doc)
