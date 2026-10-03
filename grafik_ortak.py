@@ -159,6 +159,9 @@ def _sikitir_xlim(ax, degerler, eksen: str = "x", pay_orani: float = 0.15) -> No
         ax.set_xlim(v_min - pay, v_max + pay)
     else:
         ax.set_ylim(v_min - pay, v_max + pay)
+    # Sıkı limit belirlendikten SONRA işaretleri seyreklet - aksi halde dar
+    # aralıkta çok sayıda uzun ondalık etiket yan yana sıkışıyordu.
+    seyrek_eksen(ax, eksen, n=5)
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +265,54 @@ def kaydet(fig: plt.Figure, cikti_yolu) -> None:
     plt.close(fig)
 
 
+def seyrek_eksen(ax, eksen: str = "x", n: int = 5) -> None:
+    """Eksen işaret (tick) sayısını sınırlar ve etiketleri DÜZ ONDALIK yazar.
+
+    KULLANICI GERİ BİLDİRİMİ: çubuk grafiklerin x-ekseninde çok sayıda işaret
+    olduğunda etiketler yan yana sıkışıp birbirine giriyordu
+    ("-0.00250.0000" gibi). Artık en çok n işaret konur ve her etiket, o
+    eksendeki değer aralığına yetecek kadar ondalık basamakla yazılır -
+    bilimsel gösterim (1e-2) KULLANILMAZ."""
+    from matplotlib.ticker import FuncFormatter, MaxNLocator
+
+    hedef = ax.xaxis if eksen == "x" else ax.yaxis
+    hedef.set_major_locator(MaxNLocator(nbins=n, prune=None))
+    alt, ust = (ax.get_xlim() if eksen == "x" else ax.get_ylim())
+    yayilim = abs(ust - alt)
+    # aralığa göre ondalık basamak: 0.2 -> 2 basamak, 0.002 -> 4 basamak
+    basamak = 0 if yayilim >= 50 else 1 if yayilim >= 5 else 2 if yayilim >= 0.5 else \
+              3 if yayilim >= 0.05 else 4 if yayilim >= 0.005 else 5
+    hedef.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.{basamak}f}"))
+
+
+def duz_ondalik_log_ekseni(ax, eksen: str = "y") -> None:
+    """Logaritmik eksende matplotlib varsayılan olarak '4 x 10^-1' biçiminde
+    yazar; kullanıcı isteği üzerine bunun yerine DÜZ ondalık ('0.4') yazılır.
+    Ölçek yine logaritmik kalır - yalnızca etiket biçimi değişir."""
+    from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
+
+    hedef = ax.yaxis if eksen == "y" else ax.xaxis
+    alt, ust = (ax.get_ylim() if eksen == "y" else ax.get_xlim())
+
+    def _bicim(v, _):
+        if v <= 0:
+            return ""
+        basamak = max(0, int(np.ceil(-np.log10(v))) + 1) if v < 1 else 0
+        return f"{v:.{min(basamak, 4)}f}"
+
+    # Kaç ondalık kademe (dekad) gösterildiğine göre alt-bölme seçilir: kayıp
+    # eğrileri genelde TEK bir dekaddan dar bir aralığa yayılır (orn.
+    # 0.13-0.59 = 0.66 dekad) ve yalnızca (1, 2, 5) alt-bölmesi kullanılırsa
+    # eksende 2 etiket kalır, grafiğin alt yarısı referanssız görünür.
+    dekad = np.log10(max(ust, 1e-12) / max(alt, 1e-12)) if alt > 0 else 1.0
+    subs = (1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0) if dekad < 1.5 else (1.0, 2.0, 5.0)
+
+    hedef.set_major_locator(LogLocator(base=10.0, subs=subs, numticks=12))
+    hedef.set_major_formatter(FuncFormatter(_bicim))
+    hedef.set_minor_formatter(NullFormatter())
+
+
+
 def tahmin_dogru_grafigi(df: pd.DataFrame, gercek_kolon: str, tahmin_kolon: str,
                           kol: str, baslik: str, cikti_yolu) -> None:
     alt = df.dropna(subset=[gercek_kolon, tahmin_kolon])
@@ -351,6 +402,7 @@ def residual_dagilim_grafigi(df: pd.DataFrame, gercek_kolon: str, tahmin_kolon: 
     ax.hist(data, bins=bin_edges, color="steelblue", alpha=0.85, edgecolor="white")
     ax.axvline(0, color="red", linestyle="--", lw=1.5)
     ax.set_xlim(xlim_l, xlim_r)
+    seyrek_eksen(ax, "x", n=5)
     ax.set_xlabel(x_etiket)
     ax.set_ylabel("Frequency")
     # Kullanici istegi: en yuksek (ortadaki/tepe) sutunun degeri, sutunun
@@ -464,6 +516,7 @@ def egitim_kaybi_grafigi(gecmis_dfs: dict[int, pd.DataFrame], etiket: str, basli
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss")
     ax.set_yscale("log")
+    duz_ondalik_log_ekseni(ax, "y")
     ax.legend(fontsize=8 * FIG_OLCEK, ncol=2)
     fig.tight_layout()
     panel_ekle(fig)
@@ -471,7 +524,7 @@ def egitim_kaybi_grafigi(gecmis_dfs: dict[int, pd.DataFrame], etiket: str, basli
 
 
 def permutation_importance_grafigi(skorlar: dict, etiket: str, baslik: str, cikti_yolu,
-                                    bilimsel_notasyon: bool = False, sifir_esik: float = 1e-9) -> None:
+                                    sifir_esik: float = 1e-9) -> None:
     import json as _json
     from pathlib import Path as _Path
 
@@ -504,8 +557,7 @@ def permutation_importance_grafigi(skorlar: dict, etiket: str, baslik: str, cikt
     pos_vals = [v for v in deg_s if v > 0]
     if pos_vals:
         ax.set_xlim(right=max(pos_vals) * 1.40)
-    if bilimsel_notasyon:
-        ax.ticklabel_format(style="sci", axis="x", scilimits=(-2, 2), useMathText=True)
+    seyrek_eksen(ax, "x", n=5)
 
     _Path(cikti_yolu).with_name("Feature_Importance.txt").write_text(
         "\n".join(f"{h} = {a}" for h, a in zip(harfler, ad_s)), encoding="utf-8"
