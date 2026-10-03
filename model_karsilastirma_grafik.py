@@ -50,9 +50,9 @@ def _kaydet(fig, path: Path) -> None:
 
 
 def _panel_etiket(ax, harf: str, fontsize: float = 16.0 * FIG_OLCEK) -> None:
-    """Panel harfi SOL ust kosede (kullanici istegi - bkz. grafik_ortak.panel_ekle)."""
-    ax.text(0.0, 1.03, f"({harf})", transform=ax.transAxes,
-            ha="left", va="bottom", fontsize=fontsize, fontweight="bold")
+    """Panel harfi SAG ust kosede (bkz. grafik_ortak.panel_ekle)."""
+    ax.text(1.0, 1.03, f"({harf})", transform=ax.transAxes,
+            ha="right", va="bottom", fontsize=fontsize, fontweight="bold")
 
 
 def _renk_listesi(n: int, cmap: str = "RdYlGn", ters: bool = False) -> list:

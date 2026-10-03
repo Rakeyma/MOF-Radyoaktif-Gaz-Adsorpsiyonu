@@ -173,26 +173,25 @@ def set_panel(etiket: str) -> None:
 
 
 def panel_ekle(fig: plt.Figure) -> None:
-    """Panel etiketini ((a), (b), ...) grafiğin SOL ÜST köşesine basar.
+    """Panel etiketini ((a), (b), ...) grafiğin SAĞ ÜST köşesine, eksenin
+    DIŞINA basar - böylece hiçbir veriyi örtmez.
 
-    KULLANICI İSTEĞİ: önceden sağ-üst köşedeydi; toplu (çok panelli) şekillerde
-    panel harfinin SOLDA olması istendi - akademik şekillerde de yaygın olan
-    budur, çünkü okuma sırası soldan sağa ilerler ve panel harfi ilk görülen
-    öğe olur."""
+    KONUM GEÇMİŞİ: kısa bir süre sol-üstte denendi, kullanıcı isteğiyle
+    sağ-üste geri alındı (bu, projelerin genelinde korunan tercih)."""
     if not _current_panel:
         return
     axs = fig.get_axes()
     if axs:
         axs[0].annotate(
             _current_panel,
-            xy=(0, 1), xycoords="axes fraction",
+            xy=(1, 1), xycoords="axes fraction",
             xytext=(0, 5), textcoords="offset points",
-            ha="left", va="bottom",
+            ha="right", va="bottom",
             fontsize=PANEL_FONT, fontweight="bold",
         )
     else:
-        fig.text(0.02, 0.99, _current_panel,
-                  ha="left", va="top", fontsize=PANEL_FONT, fontweight="bold")
+        fig.text(0.98, 0.99, _current_panel,
+                  ha="right", va="top", fontsize=PANEL_FONT, fontweight="bold")
 
 
 # ---------------------------------------------------------------------------

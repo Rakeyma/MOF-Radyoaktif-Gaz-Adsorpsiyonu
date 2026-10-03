@@ -4,7 +4,7 @@ rapor_olustur.py
 MOF Radyoaktif Gaz Adsorpsiyonu — Sonuç Raporu oluşturucu (python-docx).
 
 STİL: "Üç Boyutlu Kristal Malzemeler/rapor_olustur.py" ile BİREBİR AYNI
-sade/akademik biçim (Table Grid çerçeveli tablolar, renkli fon/zebra-şerit
+sade/akademik biçim (ÜÇ-ÇİZGİLİ dergi tabloları, renkli fon/zebra-şerit
 YOK, `citation_box`/`references_list` yardımcıları) — BAŞLIKLAR (title +
 tüm `add_heading` seviyeleri) DAHİL raporun TAMAMI SİYAH-BEYAZDIR — SADECE
 gömülü grafikler (zaten renkli matplotlib çıktıları) bu kuralın dışındadır.
@@ -69,7 +69,7 @@ BASE = Path(__file__).resolve().parent
 # ORTAK YARDIMCILAR ("Üç Boyutlu Kristal Malzemeler/rapor_olustur.py" ile AYNI)
 # ---------------------------------------------------------------------------
 def bold_cell(cell, text, size=10, align=WD_ALIGN_PARAGRAPH.CENTER):
-    """SADE: fon rengi YOK, sadece kalın SİYAH metin (Table Grid çerçevesiyle
+    """SADE: fon rengi YOK, sadece kalın SİYAH metin (üç-çizgili tablo
     birlikte kullanılır) - kullanıcı isteği: tablolar tamamen siyah-beyaz."""
     cell.text = ""
     p = cell.paragraphs[0]; p.alignment = align
@@ -170,10 +170,11 @@ def bullet(doc, text, size=10):
 
 
 def citation_box(doc, text, size=10):
-    """Tek hücreli, fonsuz 'kutu' - sadece 'Table Grid' çerçevesi (renkli fon
+    """Tek hücreli, fonsuz 'kutu' - sadece ince çerçeve (renkli fon
     YOK), makaleye kopyalanabilecek atıf/alıntı metnini görsel olarak ayırır."""
     tablo = doc.add_table(rows=1, cols=1)
-    tablo.style = "Table Grid"
+    tablo.style = None
+    _kenarlik(tablo, kalin_ust=4, kalin_alt=4)
     cell = tablo.rows[0].cells[0]
     cell.text = ""
     p = cell.paragraphs[0]
@@ -192,11 +193,55 @@ def references_list(doc, refs, size=8.5):
         r.font.size = Pt(size)
 
 
+def _kenarlik(tablo, kalin_ust=8, orta=4, kalin_alt=8) -> None:
+    """ÜÇ-ÇİZGİLİ (booktabs) akademik tablo biçimi: yalnızca (1) tablonun
+    üstünde kalın bir çizgi, (2) başlık satırının altında ince bir çizgi,
+    (3) tablonun altında kalın bir çizgi bulunur. DİKEY çizgi ve satır-arası
+    yatay çizgi YOKTUR.
+
+    Word'ün 'Table Grid' stili tüm hücreleri kutular; bu, kelime-işlemci
+    varsayılanıdır ve akademik dergilerde (ACS, Elsevier, Nature) kullanılmaz.
+    Bu fonksiyon bunun yerine dergi biçimini uygular."""
+    tblPr = tablo._tbl.tblPr
+    for eski in tblPr.findall(qn("w:tblBorders")):
+        tblPr.remove(eski)
+    borders = OxmlElement("w:tblBorders")
+    for ad, sz in [("top", kalin_ust), ("bottom", kalin_alt)]:
+        e = OxmlElement(f"w:{ad}")
+        e.set(qn("w:val"), "single"); e.set(qn("w:sz"), str(sz))
+        e.set(qn("w:space"), "0"); e.set(qn("w:color"), "000000")
+        borders.append(e)
+    for ad in ("left", "right", "insideV", "insideH"):
+        e = OxmlElement(f"w:{ad}")
+        e.set(qn("w:val"), "none"); e.set(qn("w:sz"), "0"); e.set(qn("w:space"), "0")
+        borders.append(e)
+    tblPr.append(borders)
+
+    # başlık satırının ALTINA tek ince çizgi
+    for hucre in tablo.rows[0].cells:
+        tcPr = hucre._tc.get_or_add_tcPr()
+        tcB = OxmlElement("w:tcBorders")
+        e = OxmlElement("w:bottom")
+        e.set(qn("w:val"), "single"); e.set(qn("w:sz"), str(orta))
+        e.set(qn("w:space"), "0"); e.set(qn("w:color"), "000000")
+        tcB.append(e)
+        tcPr.append(tcB)
+
+
+def _baslik_satirini_tekrarla(tablo) -> None:
+    """Tablo sayfa sınırını aşarsa başlık satırı her sayfada TEKRARLANIR -
+    akademik biçimde uzun tablolar için standarttır."""
+    trPr = tablo.rows[0]._tr.get_or_add_trPr()
+    e = OxmlElement("w:tblHeader")
+    e.set(qn("w:val"), "true")
+    trPr.append(e)
+
+
 def kv_table(doc, headers, rows_data):
-    """Sade tablo: sadece 'Table Grid' çerçevesi + kalın SİYAH başlık satırı -
-    fon rengi/zebra-şerit YOK."""
+    """Akademik ÜÇ-ÇİZGİLİ tablo: kalın başlık satırı, dikey çizgi yok,
+    satır-arası çizgi yok, fon rengi/zebra-şerit yok."""
     tablo = doc.add_table(rows=1 + len(rows_data), cols=len(headers))
-    tablo.style = "Table Grid"
+    tablo.style = None
     for j, h in enumerate(headers):
         bold_cell(tablo.rows[0].cells[j], h)
     for ri, row in enumerate(rows_data, 1):
@@ -204,6 +249,8 @@ def kv_table(doc, headers, rows_data):
             normal_cell(tablo.rows[ri].cells[ci], str(val),
                         align=WD_ALIGN_PARAGRAPH.CENTER if ci > 0 else WD_ALIGN_PARAGRAPH.LEFT,
                         bold=(ci == 0))
+    _kenarlik(tablo)
+    _baslik_satirini_tekrarla(tablo)
     return tablo
 
 
@@ -458,9 +505,9 @@ def bolum_karsilastirma_tablosu(doc):
     kolonlar = ["Sıra", "Model", "R²", "MAE", "RMSE", "MedianAE", "MaxErr", "PearsonR", "Mimari Notu"]
     tablo_basligi(doc, "Havuzlanmış fold-dışı (OOF) model karşılaştırması, 4 hedefin ortalaması.")
     tablo = doc.add_table(rows=1 + len(overall), cols=len(kolonlar))
-    tablo.style = "Table Grid"
+    tablo.style = None
     for j, k in enumerate(kolonlar):
-        bold_cell(tablo.rows[0].cells[j], k)
+        bold_cell(tablo.rows[0].cells[j], k, size=8.5)
     en_iyi = {"R2": overall["R2"].max(), "PearsonR": overall["PearsonR"].max(),
               "MAE": overall["MAE"].min(), "RMSE": overall["RMSE"].min(),
               "MedianAE": overall["MedianAE"].min(), "MaxError": overall["MaxError"].min()}
@@ -481,6 +528,8 @@ def bolum_karsilastirma_tablosu(doc):
                         size=8.5,
                         align=WD_ALIGN_PARAGRAPH.LEFT if j in (1, 8) else WD_ALIGN_PARAGRAPH.CENTER,
                         bold=kalin)
+    _kenarlik(tablo)
+    _baslik_satirini_tekrarla(tablo)
     doc.add_paragraph()
 
     add_paragraph(doc,
@@ -518,8 +567,7 @@ def _bolum_terimler(doc, meta) -> None:
          "Bu parçalardan biri. GRAFİKLERDEKİ 'Fold 1 / Fold 2 / Fold 3' renkleri, o "
          "noktanın hangi turda TEST verisi olarak tahmin edildiğini gösterir; yani her "
          "nokta, modelin o MOF'u hiç görmeden yaptığı tahmindir. Renklerin birbirine "
-         "karışmış olması iyiye işarettir — hiçbir fold diğerlerinden sistematik olarak "
-         "sapmıyor demektir."),
+         "karışmış olması, foldların birbiriyle tutarlı sonuç verdiğini gösterir."),
         ("Fold-dışı (OOF) tahmin ve 'havuzlanmış' metrik",
          "Bir örnek için, o örneğin TEST fold'unda olduğu turda üretilen tahmin. "
          "'Havuzlanmış (pooled)' metrik, tüm foldların bu tahminlerinin tek listede "
@@ -538,7 +586,7 @@ def _bolum_terimler(doc, meta) -> None:
          "hatanın ne kadar KÖTÜLEŞTİĞİ ölçülür. Çok kötüleşiyorsa model o özelliğe "
          "bağımlıdır. ΔMAE = karıştırma sonrası MAE − baz MAE."),
         ("Panel harfleri (a), (b), ...",
-         "Çok panelli şekillerde her grafiğin SOL ÜST köşesindeki harf, şekil altındaki "
+         "Çok panelli şekillerde her grafiğin SAĞ ÜST köşesindeki harf, şekil altındaki "
          "açıklamada hangi modele ait olduğunu söyler."),
         ("Hedefler",
          "Xe/Kr/I₂ kapasitesi: 1 gram MOF'un tutabildiği gaz miktarı (mmol/g). Xe/Kr "
@@ -601,11 +649,11 @@ def _tablo_yorumu(doc, overall: pd.DataFrame, df: pd.DataFrame) -> None:
         metin += (
             "KRİTİK UYARI — bu skorların yorumlanması için belirleyicidir: bu "
             "koşumda hedef etiketlerin TAMAMI (%100) 'PROXY_PORE_CORRELATION' "
-            "kaynaklıdır. Etiketler deneysel ölçüm, GCMC simülasyonu veya "
-            "literatür değeri DEĞİLDİR; gözeneklilik tanımlayıcılarından "
+            "kaynaklıdır: her etiket, o MOF'un gözeneklilik tanımlayıcılarından "
             "(PLD, gözenek hacmi, açık metal bölgesi, fonksiyonel grup) "
-            "kapalı-form bir formülle üretilmiş, üzerine lognormal gürültü "
-            "eklenmiştir. Dahası bu formülün dört girdisinin dördü de modele "
+            "kapalı-form bir formülle hesaplanmış ve üzerine lognormal gürültü "
+            "eklenmiş sentetik bir sayıdır. Dahası bu formülün dört girdisinin "
+            "dördü de modele "
             "yardımcı (aux) GİRDİ özelliği olarak verilmektedir — yani model, "
             "kendi girdilerinden hesaplanan bir formülü geri çözmeyi "
             "öğrenmektedir ve R² tavanı fiziksel öğrenme kapasitesiyle değil, "
@@ -639,7 +687,7 @@ def bolum_model_grafikleri(doc):
     add_heading(doc, "2. Model Grafikleri", level=1)
     add_paragraph(doc,
         "Bu bölümdeki her şekil, eğitilmiş tüm modellerin aynı grafik türünü "
-        "yan yana gösterir; panel harfleri (şekillerin sol üst köşesinde) şekil "
+        "yan yana gösterir; panel harfleri (şekillerin sağ üst köşesinde) şekil "
         "açıklamasındaki model adlarıyla eşleşir. Bu projede dört hedef "
         "bulunduğundan (Xe kapasitesi, Kr kapasitesi, Xe/Kr seçicilik, I₂ "
         "kapasitesi), grafik türlerinin her biri dört hedef için ayrı ayrı "
@@ -702,11 +750,11 @@ def bolum_model_grafikleri(doc):
         size=9, indent=True)
     doc.add_paragraph()
     add_paragraph(doc,
-        "ÖNEMLİ: buradaki uyum, modelin dışsal bir fiziği KEŞFETTİĞİ şeklinde "
-        "okunmamalıdır. Bu koşumda seçicilik etiketi zaten PLD'nin kapalı-form "
+        "ÖNEMLİ: buradaki uyum, veri kurgusunun bir sonucudur. Bu koşumda "
+        "seçicilik etiketi zaten PLD'nin kapalı-form "
         "bir fonksiyonu olarak üretilmiştir ve PLD aynı zamanda modele girdi "
         "özelliği olarak verilmektedir; dolayısıyla eğilim, öğrenilmesi gereken "
-        "dışsal bir olgu değil veri kurgusunun garantisidir. Nitekim modelin "
+        "veri kurgusunun garantisidir. Nitekim modelin "
         "ürettiği korelasyon, gürültü içeren 'gerçek' etiketlerinkinden daha "
         "güçlü çıkmaktadır — bu da modelin altta yatan gürültüsüz formüle "
         "yakınsadığını gösterir. Gerçek etiketlere geçildiğinde bu kontrol "

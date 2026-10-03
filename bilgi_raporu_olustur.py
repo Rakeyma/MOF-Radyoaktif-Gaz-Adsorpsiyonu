@@ -28,6 +28,8 @@ import json
 import pandas as pd
 from docx import Document
 from docx.shared import Cm, Pt, RGBColor
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 
 from egitim_ortak import (
     TARGET_COLUMNS, PRETRAIN_MAX_EPOCHS, PRETRAIN_PATIENCE, PROXY_TARGET_COLUMN,
@@ -67,16 +69,40 @@ def bullet(doc, text, size=9.5):
     return p
 
 
+def _kenarlik(tablo, kalin=8, orta=4) -> None:
+    """ÜÇ-ÇİZGİLİ (booktabs) akademik tablo biçimi - bkz.
+    rapor_olustur._kenarlik; iki rapor AYNI tablo biçimini kullanır."""
+    tblPr = tablo._tbl.tblPr
+    for eski in tblPr.findall(qn("w:tblBorders")):
+        tblPr.remove(eski)
+    borders = OxmlElement("w:tblBorders")
+    for ad in ("top", "bottom"):
+        e = OxmlElement(f"w:{ad}")
+        e.set(qn("w:val"), "single"); e.set(qn("w:sz"), str(kalin))
+        e.set(qn("w:space"), "0"); e.set(qn("w:color"), "000000")
+        borders.append(e)
+    for ad in ("left", "right", "insideV", "insideH"):
+        e = OxmlElement(f"w:{ad}")
+        e.set(qn("w:val"), "none"); e.set(qn("w:sz"), "0"); e.set(qn("w:space"), "0")
+        borders.append(e)
+    tblPr.append(borders)
+
+
 def kv_tablo(doc, satirlar, size=9):
-    """Onaylı bilgi raporlarındaki 2 sütunlu ANAHTAR–DEĞER tablosu."""
+    """2 sütunlu ANAHTAR–DEĞER tablosu, akademik üç-çizgili biçimde.
+
+    NOT: bu tablolarda ayrı bir BAŞLIK satırı yoktur (sol sütunun kendisi
+    anahtardır), bu yüzden üç-çizgili biçimin yalnızca üst ve alt çizgisi
+    uygulanır - başlık-altı çizgisi anlamsız olurdu."""
     tablo = doc.add_table(rows=len(satirlar), cols=2)
-    tablo.style = "Table Grid"
+    tablo.style = None
     for i, (anahtar, deger) in enumerate(satirlar):
         for j, metin in enumerate((anahtar, str(deger))):
             hucre = tablo.rows[i].cells[j]
             hucre.text = ""
             p = hucre.paragraphs[0]
             r = p.add_run(metin); r.font.size = Pt(size); r.bold = (j == 0)
+    _kenarlik(tablo)
     doc.add_paragraph()
     return tablo
 
@@ -99,6 +125,114 @@ def _etiket_kaynak_dagilimi() -> dict[str, dict[str, int]]:
     df = pd.read_csv(GAS_FINETUNE_CSV, low_memory=False)
     return {kol: df[f"label_source_{kol}"].value_counts().to_dict()
             for kol in TARGET_COLUMNS if f"label_source_{kol}" in df.columns}
+
+
+# ---------------------------------------------------------------------------
+# SEMBOL VE KOD ADI SÖZLÜKLERİ
+# ---------------------------------------------------------------------------
+# Kullanıcı isteği: raporlarda geçen alt-tireli kod adları (xe_uptake_mmol_g,
+# open_metal, PROXY_PORE_CORRELATION ...) tek başına anlaşılmıyordu. Fiziksel
+# büyüklükler için standart SEMBOL kullanılır, kod adı yalnızca parantez içinde
+# verilir; semboller ve kod adları aşağıdaki tablolarda açıklanır.
+# (sembol, okunur ad, birim, kod adı)
+SEMBOLLER = [
+    ("q(Xe)", "Xe adsorpsiyon kapasitesi", "mmol/g", "xe_uptake_mmol_g"),
+    ("q(Kr)", "Kr adsorpsiyon kapasitesi", "mmol/g", "kr_uptake_mmol_g"),
+    ("q(I₂)", "I₂ adsorpsiyon kapasitesi", "mmol/g", "i2_uptake_mmol_g"),
+    ("S(Xe/Kr)", "Xe/Kr seçicilik", "birimsiz", "xe_kr_selectivity"),
+    ("PLD", "Gözenek-sınırlayıcı çap", "Å", "pld_A"),
+    ("LCD", "En büyük kavite çapı", "Å", "lcd_A"),
+    ("Vₚ", "Gravimetrik gözenek hacmi", "cm³/g", "pore_volume_cm3_g"),
+    ("φ", "Boşluk (gözeneklilik) oranı", "0–1", "void_fraction"),
+    ("A_g", "Gravimetrik yüzey alanı", "m²/g", "gravimetric_surface_area_m2_g"),
+    ("A_v", "Hacimsel yüzey alanı", "m²/cm³", "volumetric_surface_area_m2_cm3"),
+    ("ρ", "Çerçeve yoğunluğu", "g/cm³", "density_g_cm3"),
+    ("N_atom", "Birim hücredeki atom sayısı", "adet", "nsites"),
+    ("N_el", "Benzersiz element sayısı", "adet", "nelements"),
+    ("OMS", "Açık metal bölgesi var mı", "0/1", "open_metal_site"),
+    ("FG", "Linker fonksiyonlaştırılmış mı", "0/1", "has_functional_group"),
+    ("Δχ", "Ortalama elektronegatiflik farkı (Pauling)", "birimsiz", "mean_electronegativity_diff"),
+    ("r̄", "Ortalama atom yarıçapı", "Å", "mean_atomic_radius_A"),
+    ("Z̄", "Ortalama atom numarası", "birimsiz", "mean_atomic_number"),
+    ("f_metal", "Metal atomlarının toplam atoma oranı", "0–1", "metal_fraction"),
+    ("d_k", "Gaz molekülünün kinetik çapı", "Å", "— (sabit: Xe 4.10, Kr 3.69, I₂ 5.00)"),
+    ("E_proxy", "Ön-eğitim enerjisel vekil hedefi", "eV/atom", "formation_energy_eV_atom_proxy"),
+    ("ΔMAE", "Permütasyon önemi (karıştırma sonrası MAE artışı)", "hedef birimi", "perm_importance.json"),
+]
+
+# Fiziksel büyüklük OLMAYAN, dolayısıyla sembolü bulunmayan kod adları.
+KOD_ADLARI = [
+    ("Etiket kaynağı değerleri", None),
+    ("PROXY_PORE_CORRELATION", "Bir etiketin, o MOF'un gözeneklilik tanımlayıcılarından "
+                                "(PLD, Vₚ, OMS, FG) kapalı-form bir formülle hesaplandığını "
+                                "gösteren işaret — yani sentetik bir değer (bkz. §1.2)."),
+    ("NLP_LITERATURE", "Bir etiketin, literatür makalelerinden metin madenciliğiyle "
+                        "çıkarılmış GERÇEK bir değer olduğunu gösteren işaret. Bu koşumda "
+                        "hiçbir satır bu kaynaktan gelmemiştir."),
+    ("label_source_<hedef>", "Her hedef için ayrı bir sütun; o satırdaki etiketin yukarıdaki "
+                              "iki kaynaktan hangisinden geldiğini şeffaf biçimde işaretler."),
+
+    ("Veri seti sütunları", None),
+    ("base_mof_id", "Bir örneğin TÜRETİLDİĞİ temel MOF'un kimliği. Veri artırma ile üretilen "
+                     "tüm varyantlar, türedikleri orijinalle AYNI base_mof_id'yi taşır — "
+                     "K-Fold bölmesi bu sütuna göre gruplanarak sızıntı önlenir."),
+    ("sample_id", "Tek bir satırın (bir MOF varyantının) benzersiz kimliği."),
+    ("mof_name", "MOF'un kimyasal adı/formülü."),
+    ("graf_cif_path", "O örneğin kristal yapısını içeren CIF dosyasının yolu."),
+    ("is_augmented", "Satır orijinal mi (False) yoksa veri artırmayla mı üretilmiş (True)."),
+    ("augmentation_ops", "O varyantı üretirken uygulanan işlemler: defect (bağlayıcı "
+                          "eksiltme), substitution (metal değiştirme), functional "
+                          "(fonksiyonel grup ekleme), noise (atom konumlarına küçük "
+                          "rastgele kaydırma)."),
+    ("eslesme_durumu", "Yapı ile özellik kaydının eşleşip eşleşmediği (TAM / EKSIK)."),
+
+    ("Çıktı dosyaları", None),
+    ("metrikler.json", "Bir modelin koşum özeti: kullanılan hiperparametreler ve havuzlanmış "
+                        "fold-dışı metrikler."),
+    ("test_tahminleri_oof.csv", "Her örnek için fold-dışı (OOF) gerçek ve tahmin değerleri — "
+                                 "tüm grafikler ve metrikler bu dosyadan üretilir."),
+    ("kfold_metrikleri.csv", "Fold bazında eğitim/validasyon/test metrikleri, seçilen epoch "
+                              "ve fold büyüklükleri."),
+    ("egitim_gecmisi_fold<N>.csv", "O fold'un epoch epoch eğitim ve validasyon kaybı — kayıp "
+                                    "eğrisi grafikleri bundan çizilir."),
+    ("perm_importance.json", "Permütasyon önemi (ΔMAE) skorları, özellik grubu bazında."),
+    ("Feature_Importance.txt", "Permütasyon önemi grafiğindeki harf etiketlerinin hangi "
+                                "özellik grubuna karşılık geldiği."),
+
+    ("Ayar (ortam değişkeni) adları", None),
+    ("MAX_MATERIALS / MAX_MATERIALS_PRETRAIN", "İnce-ayar ve ön-eğitim için indirilecek "
+                                                "MOF sayısının ÜST SINIRI."),
+    ("N_AUGMENT_PER_BASE", "Her temel MOF'tan kaç artırılmış varyant üretileceği."),
+    ("KFOLD_OVERRIDE", "K-Fold sayısını (K) koddaki varsayılanın yerine geçerek belirleyen "
+                        "ortam değişkeni."),
+    ("PRETRAIN_VAL_FRAC", "Ön-eğitimde validasyona ayrılan oran (0.1 = %10)."),
+    ("SEED", "Rastgeleliği tekrarlanabilir kılan sabit tohum değeri."),
+
+    ("Model/mimari parametre adları", None),
+    ("n_layers", "Mesaj iletim katmanı sayısı — model kaç kez komşuluk bilgisi yaysın."),
+    ("hidden_dim", "Ara katmanlardaki gizli temsil genişliği (nöron sayısı)."),
+    ("emb_dim (EMB_DIM)", "Kodlayıcının ürettiği MOF gömme vektörünün uzunluğu."),
+    ("aux_dim (AUX_DIM)", "Yardımcı sayısal özellik vektörünün uzunluğu."),
+    ("batch_size", "Her gradyan güncellemesinde kullanılan örnek sayısı."),
+    ("max_epochs", "Erken durdurma tetiklenmezse çalışacak MAKSİMUM epoch sayısı."),
+    ("early_stop_patience", "Validasyon hatası kaç epoch iyileşmezse eğitimin durdurulacağı."),
+    ("freeze_encoder_epochs", "İnce-ayarın başında kodlayıcının kaç epoch dondurulacağı."),
+    ("weight_decay", "Ağırlıkların büyümesini cezalandıran düzenlileştirme katsayısı."),
+    ("dropout", "Eğitimde geçici olarak kapatılan nöron oranı."),
+    ("cutoff", "İki atomun grafta kenarla bağlanması için izin verilen en büyük mesafe (Å)."),
+    ("heads", "Dikkat mekanizmasındaki paralel 'baş' sayısı (GAT, GraphGPS, SE(3)-T)."),
+    ("l_max", "Ekvaryant modellerde kullanılan en yüksek açısal momentum derecesi "
+               "(l≤1: skaler + vektör kanalları)."),
+    ("max_degree", "PNA'nın beklediği en büyük düğüm komşu sayısı (ölçekleyicileri "
+                    "normalize etmek için)."),
+
+    ("Fold büyüklüğü sütunları", None),
+    ("n_grup_train / n_grup_val / n_grup_test", "O fold'da eğitim / validasyon / test "
+                                                 "setine düşen TEMEL MOF sayısı (örnek "
+                                                 "sayısı değil)."),
+    ("en_iyi_epoch", "O fold'da validasyon MAE'sinin en düşük olduğu, yani ağırlıkların "
+                      "kaydedildiği epoch."),
+]
 
 
 MIMARI_TURU = {
@@ -160,7 +294,8 @@ def bolum_veri_seti(doc):
                             "hesaplanmış gözeneklilik sütunları"),
         ("Üçüncül yedek", f"{len(ARKETIPLER)} bilinen MOF ailesinden (HKUST-1, MOF-5, ZIF-8, "
                            f"UiO-66, MIL-101, ...) prosedürel yapı üretimi — boru hattını ASLA "
-                           f"bloklamaz, ancak kristalografik olarak rafine yapılar DEĞİLDİR"),
+                           f"bloklamaz. Bunlar, bilinen MOF ailelerinin metal düğüm ve organik "
+                           f"bağlayıcı yerleşimini taklit eden basitleştirilmiş iskeletlerdir"),
     ]
     if kaynak:
         satirlar += [
@@ -218,29 +353,35 @@ def _bolum_kapsam_notu(doc):
 
     para(doc,
          "Bu koşumda hedef etiketlerin TAMAMI (%100) 'PROXY_PORE_CORRELATION' "
-         "kaynaklıdır. Etiketler deneysel ölçüm DEĞİLDİR, GCMC simülasyonu "
-         "DEĞİLDİR, literatürden alınmış DEĞİLDİR: gözeneklilik "
-         "tanımlayıcılarından kapalı-form bir formülle ÜRETİLMİŞTİR. Formülün "
-         "fiziksel motivasyonu gerçektir (Sikora et al. 2012'nin boyut-eleme "
-         "ilkesi: gözenek-sınırlayıcı çap hedef gazın kinetik çapına yaklaştıkça "
-         "seçicilik artar), ancak ürettiği SAYILAR gerçek değildir ve üzerlerine "
-         "lognormal çarpımsal gürültü eklenmiştir.", size=9.5)
+         "kaynaklıdır: her etiket, o MOF'un gözeneklilik tanımlayıcılarından "
+         "(PLD, Vₚ, OMS, FG) kapalı-form bir formülle HESAPLANMIŞ ve üzerine "
+         "lognormal çarpımsal gürültü eklenmiş SENTETİK bir sayıdır. Üretim "
+         "zinciri şudur: yapı → geometrik gözeneklilik kestirimi → boyut-uyum "
+         "terimi g(d_k) → kapasite/seçicilik formülü → gürültü. Formülün "
+         "fiziksel motivasyonu literatürden gelir (Sikora et al. 2012'nin "
+         "boyut-eleme ilkesi: PLD hedef gazın kinetik çapına yaklaştıkça "
+         "seçicilik artar); üretilen sayılar ise bu ilkenin matematiksel bir "
+         "taklididir. Etiketlerin kaynağı deneysel ölçüm, GCMC simülasyonu veya "
+         "literatür derlemesi olsaydı 'label_source' sütunu bunu gösterirdi; bu "
+         "koşumda 2100 satırın 2100'ü de formül kaynaklıdır.", size=9.5)
     doc.add_paragraph()
     para(doc, "Etiket üretim formülü (eslesme_4_dataset_birlestirici.py):", size=9.5, bold=True)
     for satir in [
-        "boyut_uyum(d) = exp(−(PLD − d)² / (2 × 1.5²)) — d: kinetik çap "
-        "(Xe 4.10 Å, Kr 3.69 Å, I₂ 5.00 Å)",
-        "xe  = pore_volume × (0.8 + 1.5 × boyut_uyum(Xe)) × (1 + 0.4 × open_metal) × lognormal(0.15)",
-        "kr  = pore_volume × (0.5 + 1.0 × boyut_uyum(Kr)) × (1 + 0.2 × open_metal) × lognormal(0.15)",
-        "sel = clip(1 + 7 × boyut_uyum(Xe)/(boyut_uyum(Kr)+0.15) × (1 + 0.3 × open_metal), 1, 30)",
-        "i2  = pore_volume × (0.3 + 1.0 × boyut_uyum(I₂)) × (1 + 1.2 × open_metal) "
-        "× (1 + 0.5 × func) × lognormal(0.18)",
+        "g(d_k) = exp(−(PLD − d_k)² / (2 × 1.5²))   —  boyut-uyum terimi; d_k gazın "
+        "kinetik çapıdır (Xe 4.10 Å, Kr 3.69 Å, I₂ 5.00 Å). PLD bu çapa yaklaştıkça "
+        "g → 1 olur",
+        "q(Xe)    = Vₚ × (0.8 + 1.5 × g(Xe)) × (1 + 0.4 × OMS) × lognormal(0.15)",
+        "q(Kr)    = Vₚ × (0.5 + 1.0 × g(Kr)) × (1 + 0.2 × OMS) × lognormal(0.15)",
+        "S(Xe/Kr) = clip( 1 + 7 × g(Xe) / (g(Kr) + 0.15) × (1 + 0.3 × OMS),  1,  30 )",
+        "q(I₂)    = Vₚ × (0.3 + 1.0 × g(I₂)) × (1 + 1.2 × OMS) × (1 + 0.5 × FG) × lognormal(0.18)",
+        "lognormal(σ): ortalaması 1 olan çarpımsal rastgele gürültü — aynı yapıya "
+        "her seferinde birebir aynı değeri vermemek için eklenir",
     ]:
         bullet(doc, satir, size=8.5)
     doc.add_paragraph()
     para(doc,
-         "DÖNGÜSELLİK: bu formülün girdileri olan pld_A, pore_volume_cm3_g, "
-         "open_metal_site ve has_functional_group değişkenlerinin DÖRDÜ DE modele "
+         "DÖNGÜSELLİK: bu formülün girdileri olan PLD, Vₚ, OMS ve FG "
+         "değişkenlerinin DÖRDÜ DE modele "
          "yardımcı (aux) GİRDİ özelliği olarak verilmektedir (bkz. §1.3). "
          "Dolayısıyla model, kendi girdilerinden hesaplanan bir formülü geri "
          "çözmeyi öğrenmektedir; R² tavanı fiziksel öğrenme kapasitesiyle değil, "
@@ -290,15 +431,37 @@ def _bolum_sutun_gruplari(doc):
     ]:
         bullet(doc, metin)
     doc.add_paragraph()
+    h(doc, "1.3.1 Sembol Tablosu (fiziksel büyüklükler)", level=3)
     para(doc,
-         "ÖNEMLİ: gözeneklilik tanımlayıcıları (pore_volume, void_fraction, LCD, "
-         "PLD, yüzey alanları) Zeo++ ile veya deneysel olarak ÖLÇÜLMEMİŞTİR — bu "
+         "Raporun geri kalanında fiziksel büyüklükler için aşağıdaki SEMBOLLER "
+         "kullanılır; ham sütun (kod) adı yalnızca referans için verilmiştir. "
+         "Sembolü olmayan, yalnızca kod adıyla anılan diğer tüm tanımlayıcılar "
+         "(dosya adları, ayar adları, etiket kaynağı değerleri vb.) §10.1'de "
+         "ayrıca açıklanmıştır.", size=9.5)
+    doc.add_paragraph()
+    tablo = doc.add_table(rows=1 + len(SEMBOLLER), cols=4)
+    tablo.style = None
+    for j, baslik in enumerate(["Sembol", "Büyüklük", "Birim", "Veri sütunu (kod adı)"]):
+        hucre = tablo.rows[0].cells[j]; hucre.text = ""
+        r = hucre.paragraphs[0].add_run(baslik); r.bold = True; r.font.size = Pt(9)
+    for i, (sem, ad, birim, kod) in enumerate(SEMBOLLER, 1):
+        for j, metin in enumerate([sem, ad, birim, kod]):
+            hucre = tablo.rows[i].cells[j]; hucre.text = ""
+            r = hucre.paragraphs[0].add_run(metin); r.font.size = Pt(8.5)
+            r.bold = (j == 0)
+    _kenarlik(tablo)
+    doc.add_paragraph()
+
+    para(doc,
+         "ÖNEMLİ: gözeneklilik tanımlayıcıları (Vₚ, φ, LCD, "
+         "PLD, A_g, A_v) Zeo++ ile veya deneysel olarak ÖLÇÜLMEMİŞTİR — bu "
          "ortamda Zeo++ mevcut olmadığından yapıdan kaba bir geometrik yaklaşımla "
-         "kestirilmişlerdir: void_fraction ≈ 1 − ΣV_vdW/V_hücre, "
-         "pore_volume = void_fraction × V_hücre / kütle, LCD ≈ en kısa kafes "
-         "vektörü × √void_fraction, PLD ≈ 0.55 × LCD "
-         "(veri_indirici_1_jarvis_core_mof.estimate_pore_proxies). Bu değerler "
-         "ölçülmüş BET yüzey alanı veya gözenek çapı olarak alıntılanamaz.", size=9)
+         "kestirilmişlerdir: φ ≈ 1 − ΣV_vdW/V_hücre, "
+         "Vₚ = φ × V_hücre / kütle, LCD ≈ en kısa kafes vektörü × √φ, "
+         "PLD ≈ 0.55 × LCD "
+         "(veri_indirici_1_jarvis_core_mof.estimate_pore_proxies). Bunlar "
+         "geometrik KESTİRİMDİR ve raporlarda bu sıfatla anılmalıdır; "
+         "ölçülmüş BET yüzey alanı veya Zeo++ gözenek çapı yerine geçmezler.", size=9)
     doc.add_paragraph()
 
 
@@ -424,15 +587,15 @@ def bolum_hiperparametre_secimi(doc):
 
     h(doc, "3.1 Hiperparametre Optimizasyonu Yapıldı mı?", level=2)
     para(doc,
-         "HAYIR — bu koşumda sistematik bir hiperparametre araması "
-         "(grid search, random search, Bayesçi optimizasyon, Optuna vb.) "
-         "YAPILMAMIŞTIR. Katman sayısı, öğrenme oranı, batch boyutu, gizli "
-         "katman genişliği, dropout gibi değerler SABİT olarak belirlenmiş ve "
-         "tüm modellerde aynı tutulmuştur. Bunun nedeni, projenin amacının "
-         "'en iyi hiperparametreyi bulmak' değil, FARKLI MİMARİLERİ ADİL "
-         "KOŞULLARDA KARŞILAŞTIRMAK olmasıdır: tüm mimariler aynı eğitim "
-         "bütçesini ve aynı ayarları paylaşırsa, aradaki fark mimariden gelir, "
-         "ayar farkından değil.", size=9.5)
+         "Bu koşumda hiperparametreler SABİT seçilmiş ve on modelin tamamında "
+         "AYNI tutulmuştur: katman sayısı, öğrenme oranı, batch boyutu, gizli "
+         "katman genişliği, dropout ve eğitim bütçesi tüm mimariler için "
+         "ortaktır. Sistematik bir arama (grid search, random search, Bayesçi "
+         "optimizasyon, Optuna vb.) bu koşumun kapsamı dışında bırakılmıştır. "
+         "Gerekçe, projenin amacının FARKLI MİMARİLERİ ADİL KOŞULLARDA "
+         "KARŞILAŞTIRMAK olmasıdır: tüm mimariler aynı bütçeyi ve aynı ayarları "
+         "paylaştığında, aradaki başarım farkı mimari tasarımına atfedilebilir "
+         "hale gelir.", size=9.5)
     doc.add_paragraph()
     para(doc,
          "Bu, raporlanan skorların yorumlanmasında dikkate alınmalıdır: her "
@@ -458,11 +621,11 @@ def bolum_hiperparametre_secimi(doc):
 
     h(doc, "3.2 K-Fold'da Ne Optimize Ediliyor?", level=2)
     para(doc,
-         "Sık karşılaşılan bir yanlış anlamayı önlemek gerekir: K-Fold çapraz "
-         "doğrulama bir OPTİMİZASYON yöntemi DEĞİL, bir ÖLÇME yöntemidir. "
-         "Fold'lar bir şeyi 'maksimize etmek' için kullanılmaz; modelin "
-         "görmediği veriye ne kadar genellediğini YANSIZ ölçmek için "
-         "kullanılır. Üç ayrı düzeyde üç ayrı şey olur:", size=9.5)
+         "K-Fold çapraz doğrulama bir ÖLÇME yöntemidir: her örneği tam olarak "
+         "bir kez, modelin onu hiç görmediği bir turda test ederek, modelin "
+         "görmediği veriye ne kadar genellediğini yansız biçimde ölçer. "
+         "Optimizasyon ise bundan ayrı iki düzeyde gerçekleşir. Üç düzeyin "
+         "her birinde ne olduğu aşağıdadır:", size=9.5)
     doc.add_paragraph()
     kv_tablo(doc, [
         ("1) Eğitim içinde (her epoch)",
@@ -471,14 +634,14 @@ def bolum_hiperparametre_secimi(doc):
         ("2) Epoch seçiminde (fold içinde)",
          "MİNİMİZE EDİLEN: VALİDASYON MAE'si (4 hedefin ortalaması, 'overall'). "
          "Validasyon MAE'sinin en düşük olduğu epoch'un ağırlıkları saklanır; "
-         "son epoch DEĞİL, en iyi epoch kullanılır"),
+         "eğitim bittiğinde bu ağırlıklara geri dönülür"),
         ("3) Fold'lar arasında (K-Fold'un kendisi)",
          "HİÇBİR ŞEY optimize edilmez. Fold'lar yalnızca her örneğin bir kez "
          "test edilmesini sağlar; sonra tüm foldların fold-dışı tahminleri "
          "havuzlanıp tek bir R²/MAE hesaplanır. Bu, raporlanan nihai skordur"),
-        ("Test verisi", "Hiçbir aşamada hiçbir karar için KULLANILMAZ — ne ağırlık "
-                         "güncellemesinde, ne epoch seçiminde. Yalnızca en sonda "
-                         "ölçüm için okunur"),
+        ("Test verisi", "Yalnızca en sonda, nihai başarımı ölçmek için okunur. Ağırlık "
+                         "güncellemesi ve epoch seçimi tamamen eğitim ve validasyon "
+                         "kümeleriyle yapılır"),
     ])
 
     h(doc, "3.3 Eğitim Hangi Epoch'ta Kesilmeli?", level=2)
@@ -597,9 +760,10 @@ def bolum_egitim_cercevesi(doc):
     doc.add_paragraph()
     kv_tablo(doc, [
         ("Ön-eğitim hedefi", f"{PROXY_TARGET_COLUMN} — HF veri setinin GCMC-simüle CO₂ "
-                              f"adsorpsiyon ısısından türetilen enerjisel vekil; gerçek DFT "
-                              f"oluşum enerjisi DEĞİLDİR (kayıtların bir kısmı için ayrıca "
-                              f"gözeneklilik/kompozisyondan türetilmiştir)"),
+                              f"adsorpsiyon ısısından (Widom ekleme) türetilen enerjisel bir "
+                              f"vekildir; sütun adındaki '_proxy' eki bunu belirtir. Kaynakta bu "
+                              f"değeri bulunmayan kayıtlar için gözeneklilik ve kompozisyondan "
+                              f"türetilen basit bir tahmin kullanılmıştır"),
         ("Ön-eğitim max epoch / sabır",
          f"{PRETRAIN_MAX_EPOCHS} / {PRETRAIN_PATIENCE} — kod varsayılanı; bu aşamanın "
          f"hiperparametreleri JSON'a kaydedilmediğinden koşumda ezilmiş olup olmadığı "
@@ -682,7 +846,13 @@ def bolum_graf_insa(doc):
                             f"boşluğunu da kapsaması için yoğun kristallere kıyasla geniş tutulmuştur"),
         ("Düğüm öznitelikleri", "Atom numarası (Z) gömmesi"),
         ("Kenar öznitelikleri", "Gauss RBF ile kodlanmış atomlar arası mesafe"),
-        ("Periyodiklik", "Periyodik görüntüler dikkate alınır"),
+        ("Periyodiklik ve graf kapsamı",
+         "Graf, birim hücrenin kendisi üzerine değil, kafes vektörleri boyunca "
+         "ötelenerek üretilen PERİYODİK KOPYALARDAN merkeze kesim yarıçapı "
+         "kadar mesafede kalan atomların oluşturduğu bir KÜME üzerine kurulur. "
+         "Bu nedenle graftaki atom sayısı birim hücredekinden büyüktür: bu veri "
+         "setinde birim hücre 18–62 atom (medyan 51) içerirken graf 72–172 atom "
+         "(medyan 102) içerir"),
         ("Kodlayıcı arayüzü", "encoder.forward(g: dict) — SÖZLÜK tabanlı. DimeNet++ gibi açısal "
                                "modeller ek alanlara (idx_kj / idx_ji / theta) ihtiyaç duyduğundan "
                                "pozisyonel arayüz yerine bu tercih edilmiştir"),
@@ -807,8 +977,8 @@ def bolum_permutasyon_bulgular(doc):
         ("Fiziksel yorum",
          "Hazır-hesaplanmış gözeneklilik tanımlayıcıları, öğrenilen kristal graf "
          "gömmesinden (Crystal Structure) onlarca kat daha güçlü bir sinyal "
-         "taşımaktadır. Bu, modelin bir kusuru DEĞİL veri kurgusunun doğrudan "
-         "sonucudur: hedef etiketler zaten bu tanımlayıcılardan üretilmiştir "
+         "taşımaktadır. Bu sonuç doğrudan veri kurgusundan gelir: hedef "
+         "etiketler zaten bu tanımlayıcılardan üretilmiştir "
          "(§1.2), dolayısıyla 3B atomistik geometri ek bilgi taşımamaktadır"),
     ])
 
@@ -842,7 +1012,7 @@ def bolum_permutasyon_bulgular(doc):
          (f"Eğitilmiş {len(r_tahmin)} modelin TAMAMI aynı negatif işareti doğru "
           f"yakalamıştır (r_tahmin = {min(r_tahmin):.3f} … {max(r_tahmin):.3f})")
          if r_tahmin else "—"),
-        ("UYARI — bu bir fizik doğrulaması DEĞİLDİR",
+        ("Bu testin bu koşumda ÖLÇTÜĞÜ şey",
          "Modelin ürettiği korelasyon, gürültü içeren 'gerçek' etiketlerinkinden "
          "DAHA güçlüdür. Bunun nedeni, seçicilik etiketinin zaten PLD'nin "
          "kapalı-form bir fonksiyonu olarak üretilmiş olması ve PLD'nin aynı "
@@ -1044,8 +1214,10 @@ TERIMLER = [
      "orijinali testte olursa model 'kopya çekmiş' olur. Bu yüzden bölme örnek bazında "
      "değil TEMEL MOF (base_mof_id) bazında yapılır — bir MOF'un tüm varyantları hep "
      "aynı fold'dadır."),
-    ("Validasyon seti", "Eğitim verisinden ayrılan küçük bir parça. Test için DEĞİL, "
-                         "eğitimi ne zaman durduracağımıza karar vermek için kullanılır."),
+    ("Validasyon seti", "Eğitim verisinden ayrılan küçük bir parça; eğitimi ne zaman "
+                         "durduracağımıza ve hangi epoch'un ağırlıklarını saklayacağımıza "
+                         "karar vermek için kullanılır. Nihai başarım ölçümü ayrı tutulan "
+                         "test kümesiyle yapılır."),
 
     ("Eğitim Süreci", None),
     ("Epoch", "Modelin tüm eğitim verisini baştan sona bir kez görmesi. 15 epoch = veri "
@@ -1155,7 +1327,7 @@ TERIMLER = [
      "belirlenir — yani sınıflar 'düşük/orta-düşük/orta-yüksek/yüksek' GÖRELİ sınıflardır."),
     ("Logaritmik eksen", "Kayıp eğrilerinde kullanılır. Değerler başta büyük sonra çok "
                           "küçük olduğundan, doğrusal eksende erken düşüş görünmez olurdu."),
-    ("Panel harfleri (a), (b), ...", "Çok panelli şekillerde her grafiğin SOL ÜST "
+    ("Panel harfleri (a), (b), ...", "Çok panelli şekillerde her grafiğin SAĞ ÜST "
                                       "köşesindeki harf, şekil altındaki açıklamada hangi "
                                       "modele ait olduğunu söyler."),
     ("Permütasyon önemi (ΔMAE)",
@@ -1246,8 +1418,32 @@ TERIMLER = [
 ]
 
 
+def _bolum_kod_adlari(doc):
+    """Kullanıcı isteği: raporlarda geçen alt-tireli kod adlarının (sütun adı,
+    dosya adı, ayar adı, etiket kaynağı değeri) hepsi açıklanır. Fiziksel
+    büyüklükler burada DEĞİL, §1.3.1'deki sembol tablosundadır."""
+    h(doc, "10.1 Kod ve Sütun Adları", level=2)
+    para(doc,
+         "Raporda ve çıktı dosyalarında geçen, alt tire içeren teknik "
+         "adlandırmaların tamamı aşağıda açıklanmıştır. Fiziksel büyüklükler "
+         "için ayrıca sembol tanımlanmıştır — bkz. §1.3.1 Sembol Tablosu.",
+         size=9.5)
+    doc.add_paragraph()
+    for ad, aciklama in KOD_ADLARI:
+        if aciklama is None:
+            h(doc, ad, level=3)
+            continue
+        p = doc.add_paragraph()
+        p.paragraph_format.left_indent = Cm(0.5)
+        r = p.add_run(f"{ad}: "); r.bold = True; r.font.size = Pt(9)
+        r2 = p.add_run(aciklama); r2.font.size = Pt(9)
+    doc.add_paragraph()
+
+
 def bolum_terimler(doc):
     h(doc, "10. Terimler Sözlüğü")
+    _bolum_kod_adlari(doc)
+    h(doc, "10.2 Kavram Sözlüğü", level=2)
     para(doc,
          "Bu bölüm, raporda geçen tüm teknik terimleri konuya hiç aşina olmayan bir "
          "okuyucu için açıklar. Terimler konu başlıklarına göre gruplanmıştır.",
@@ -1258,7 +1454,7 @@ def bolum_terimler(doc):
             # .title() KULLANILMAZ: Python'un title()'ı Türkçe'de noktalı/noktasız
             # i ayrımını bozuyor ("Veri" -> "Veri̇") ve kısaltmaları küçültüyor
             # ("GNN" -> "Gnn"). Grup adları listede zaten doğru yazılmıştır.
-            h(doc, terim, level=2)
+            h(doc, terim, level=3)
             continue
         p = doc.add_paragraph()
         r = p.add_run(f"{terim}: "); r.bold = True; r.font.size = Pt(9)
