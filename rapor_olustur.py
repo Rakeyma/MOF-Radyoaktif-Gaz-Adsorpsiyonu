@@ -21,14 +21,16 @@ ikisi TUTARSIZDI, bkz. kullanıcı geri bildirimi).
 BİÇİM: danışmanın ONAYLADIĞI iki rapor (Termal Bariyer Kaplamalar TBC,
 Katı Elektrolitler) ile BİREBİR aynı iskelet kullanılır:
     1. Model Karşılaştırma Tablosu (+ "Metrik Tanımları" + "Tablo Yorumu")
-    2. Model Grafikleri (2.1 gerçek-tahmin, 2.2 hata dağılımı, 2.3 karışıklık
-       matrisi, 2.4 fiziksel tutarlılık, 2.5 kayıp eğrileri, 2.6 özellik önemi,
-       2.7 Model Yorumları) — 2.5 onaylı raporlarda YOKTUR, kullanıcı bu
-       eğrilerin açıklanmasını ayrıca istediği için EK olarak korunmuştur
+    2. Model Grafikleri (2.1 gerçek-tahmin, 2.2 hata dağılımı, 2.3 fiziksel
+       tutarlılık, 2.4 kayıp eğrileri, 2.5 özellik önemi, 2.6 Model Yorumları)
+       — 2.4 onaylı raporlarda bulunmaz, kullanıcı bu eğrilerin açıklanmasını
+       ayrıca istediği için EK olarak korunmuştur. Karışıklık matrisi bölümü
+       kullanıcı isteğiyle KALDIRILMIŞTIR (grafikler üretilmeye devam eder,
+       yalnızca rapora gömülmez)
     3. XAI Grafikleri (her yöntem için grafikler + "Yorum")
     4. Kıyaslama Grafikleri (+ "Yorum")
 Onaylı raporlarda Özet/Tartışma/Sonuç/Kaynakça bölümleri YOKTUR; yorum yükü
-"Tablo Yorumu", "2.7 Model Yorumları" ve XAI "Yorum" paragraflarındadır.
+"Tablo Yorumu", "2.6 Model Yorumları" ve XAI "Yorum" paragraflarındadır.
 
 DÜRÜSTLÜK İLKESİ (sibling projeyle AYNI): bu script model_karsilastirma_
 sonuclari.csv + <Model>/sonuclar/grafikler/*.tif + XAI sonuç dosyalarını
@@ -357,10 +359,10 @@ def _donguselluk_kaniti() -> str:
 
     parcalar = []
     if oranlar:
-        parcalar.append(f"§2.6'da 'Pore Geometry' ΔMAE'si 'Crystal Structure'ınkinin "
+        parcalar.append(f"§2.5'te 'Pore Geometry' ΔMAE'si 'Crystal Structure'ınkinin "
                          f"{min(oranlar):.0f}-{max(oranlar):.0f} katıdır")
     if r_gercek_list and r_tahmin_list:
-        parcalar.append(f"§2.4'te modelin ürettiği korelasyon "
+        parcalar.append(f"§2.3'te modelin ürettiği korelasyon "
                          f"(r={min(r_tahmin_list):.3f}…{max(r_tahmin_list):.3f}), gürültülü "
                          f"gerçek etiketlerinkinden (r={np.mean(r_gercek_list):.3f}) DAHA güçlüdür")
     if not parcalar:
@@ -399,25 +401,6 @@ def _ilk_metrikler_json() -> dict | None:
 def _rapor_modelleri() -> list[str]:
     return [m for m in MODEL_KLASORLERI if m in _tum_metrikler_json()]
 
-
-def _esik_ozeti(kol: str) -> str | None:
-    """Confusion-matrix sınıf sınırlarını (Q1/medyan/Q3) GERÇEK OOF verisinden
-    hesaplar - grafik_ortak._dinamik_esikler ile AYNI mantık (kullanıcı
-    isteği: 'confusion matrislerinde sınıflandırma neye göre' sorusunun
-    cevabı, sayılarla birlikte, elle yazılmadan rapora eklensin)."""
-    for model_adi in MODEL_KLASORLERI:
-        f = PROJECT_ROOT / model_adi / "sonuclar" / "test_tahminleri_oof.csv"
-        if not f.exists():
-            continue
-        odf = pd.read_csv(f)
-        kolon = f"gercek_{kol}"
-        if kolon not in odf.columns or odf[kolon].dropna().empty:
-            continue
-        q1, q2, q3 = np.percentile(odf[kolon].dropna().values, [25, 50, 75])
-        birim = TARGET_UNITS.get(kol, "")
-        return (f"< {q1:.3g}, {q1:.3g}–{q2:.3g}, {q2:.3g}–{q3:.3g}, > {q3:.3g} {birim} "
-                f"(n={len(odf[kolon].dropna())} örnek)")
-    return None
 
 
 def _xai_baslik(dosya_adi: str) -> str:
@@ -718,26 +701,7 @@ def bolum_model_grafikleri(doc):
         _grafik_blogu(doc, f"residual_dagilim_{{m}}_{kol}.tif",
                       f"modellerine ait {_hedef_etiket(kol)} hedefi için hata dağılımı")
 
-    add_heading(doc, "2.3 Sınıflandırma Karışıklık Matrisi Grafikleri", level=2)
-    add_paragraph(doc,
-        "Regresyon çıktısı, yorumlanabilirlik için dört sınıfa indirgenmiştir. "
-        "Sınıflandırma SABİT bir fiziksel eşiğe değil, her hedefin GERÇEK "
-        "değerlerinin kendi çeyreklik dağılımına göre belirlenir: örnekler "
-        "küçükten büyüğe sıralanıp Q1 (%25), medyan (%50) ve Q3 (%75) "
-        "noktalarından dört eşit-büyüklükte sınıfa bölünür (<Q1 / Q1–medyan / "
-        "medyan–Q3 / >Q3), yani 'düşük / orta-düşük / orta-yüksek / yüksek' "
-        "göreli sınıflardır ve her hedef için yeniden hesaplanır. Köşegen "
-        "üzerindeki hücreler doğru sınıflandırmaları gösterir.", size=9, indent=True)
-    doc.add_paragraph()
-    for kol in TARGET_COLUMNS:
-        esik = _esik_ozeti(kol)
-        if esik:
-            add_paragraph(doc, f"{_hedef_etiket(kol)} için sınıf sınırları: {esik}",
-                          size=9, bold=True, indent=True)
-        _grafik_blogu(doc, f"confusion_matrix_{{m}}_{kol}.tif",
-                      f"modellerine ait {_hedef_etiket(kol)} hedefi için karışıklık matrisi")
-
-    add_heading(doc, "2.4 Gözeneklilik – Seçicilik Fiziksel Tutarlılık Grafikleri", level=2)
+    add_heading(doc, "2.3 Gözeneklilik – Seçicilik Fiziksel Tutarlılık Grafikleri", level=2)
     add_paragraph(doc,
         "Gözeneklilik literatürünün temel bulgusunun (Sikora et al. 2012) bu "
         "projedeki karşılığı: Gözenek-Sınırlayıcı Çap (PLD) hedef gazın kinetik "
@@ -766,13 +730,13 @@ def bolum_model_grafikleri(doc):
     # NOT: danışmanın onayladığı raporlarda eğitim/validasyon kayıp eğrisi
     # bölümü YOKTUR; ancak kullanıcı bu eğrilerin açıkça anlatılmasını ayrıca
     # istediğinden, onaylı iskeleti bozmayan bir EK alt bölüm olarak korunmuştur.
-    add_heading(doc, "2.5 Eğitim/Validasyon Kayıp Eğrileri", level=2)
+    add_heading(doc, "2.4 Eğitim/Validasyon Kayıp Eğrileri", level=2)
     _bolum_kayip_egrileri(doc)
 
-    add_heading(doc, "2.6 Özellik Önemi Analizi", level=2)
+    add_heading(doc, "2.5 Özellik Önemi Analizi", level=2)
     _bolum_ozellik_onemi(doc)
 
-    add_heading(doc, "2.7 Model Yorumları", level=2)
+    add_heading(doc, "2.6 Model Yorumları", level=2)
     _bolum_model_yorumlari(doc)
 
 
@@ -872,7 +836,7 @@ def _bolum_ozellik_onemi(doc):
 
 
 def _bolum_model_yorumlari(doc):
-    """Onaylı raporlardaki '2.6 Model Yorumları' - her model için ayrı paragraf,
+    """Onaylı raporlardaki 'Model Yorumları' - her model için ayrı paragraf,
     sayılar gerçek çıktılardan."""
     df = _karsilastirma_df()
     tum_meta = _tum_metrikler_json()
@@ -1000,7 +964,7 @@ def bolum_kiyaslama(doc):
             f"göstermektedir. R² – MAE ikili grafiğinde de modeller sıkı bir küme "
             f"oluşturmakta, hiçbir model diğerlerinden belirgin biçimde "
             f"ayrışmamaktadır. {isi_yorum}"
-            f"Bu tablo, §2.6'daki permütasyon önemi bulgusuyla tutarlıdır: "
+            f"Bu tablo, §2.5'teki permütasyon önemi bulgusuyla tutarlıdır: "
             f"başarım ezici ölçüde hazır-hesaplanmış gözeneklilik "
             f"tanımlayıcılarından gelmekte, mimarilerin birbirinden ayrıştığı yer "
             f"olan 3B geometri işleme kapasitesi ise neredeyse hiç "

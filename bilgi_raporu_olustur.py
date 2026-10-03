@@ -386,8 +386,8 @@ def _bolum_kapsam_notu(doc):
          "Dolayısıyla model, kendi girdilerinden hesaplanan bir formülü geri "
          "çözmeyi öğrenmektedir; R² tavanı fiziksel öğrenme kapasitesiyle değil, "
          "etikete enjekte edilen gürültüyle belirlenir. Bunun sonuçlardaki izleri "
-         "Sonuç Raporu'nda §2.6'da (gözeneklilik grubunun permütasyon öneminin 3B "
-         "yapıdan onlarca kat büyük çıkması) ve §2.4'te (modelin ürettiği "
+         "Sonuç Raporu'nda §2.5'te (gözeneklilik grubunun permütasyon öneminin 3B "
+         "yapıdan onlarca kat büyük çıkması) ve §2.3'te (modelin ürettiği "
          "korelasyonun gürültülü gerçek etiketlerinkinden daha güçlü olması) "
          "görülebilir. Bu nedenle raporlanan başarım değerleri boru hattının "
          "teknik doğrulamasıdır; gerçek Xe/Kr/I₂ adsorpsiyon tahmin yeteneği "
@@ -685,7 +685,7 @@ def bolum_hiperparametre_secimi(doc):
               " — hiçbir fold üst sınıra dayanmadı, yani max epoch kısıtlayıcı "
               "olmamıştır (eğitim kendiliğinden yakınsamıştır)")),
             ("Nasıl anlaşılır (grafikten)",
-             "Sonuç Raporu §2.5'teki kayıp eğrilerinde, validasyon (kesikli) "
+             "Sonuç Raporu §2.4'teki kayıp eğrilerinde, validasyon (kesikli) "
              "çizgisinin en alçak noktası o fold'un seçilen epoch'udur. Bu "
              "noktadan sonra validasyon çizgisi yükselirken eğitim çizgisi "
              "düşmeye devam ediyorsa, orası ezberin başladığı yerdir"),
@@ -1317,14 +1317,11 @@ TERIMLER = [
     ("Grafikleri Okuma", None),
     ("Artık (residual)", "Tahmin − gerçek değer. Sıfıra yakın ve sıfır etrafında simetrik "
                           "dağılması istenir; sistematik kayma yanlılık demektir."),
-    ("Karışıklık matrisi (confusion matrix)",
-     "Normalde sınıflandırma için kullanılır; burada regresyon çıktısı yorumlanabilirlik "
-     "için 4 sınıfa indirgenmiştir. Satırlar gerçek, sütunlar tahmin edilen sınıftır; "
-     "KÖŞEGEN üzerindeki hücreler doğru sınıflandırmalardır."),
     ("Çeyreklik (Q1 / medyan / Q3)",
-     "Veriyi dörde bölen noktalar: Q1'in altında verinin %25'i, medyanın altında %50'si, "
-     "Q3'ün altında %75'i kalır. Sınıf sınırları sabit fiziksel eşik yerine bu noktalardan "
-     "belirlenir — yani sınıflar 'düşük/orta-düşük/orta-yüksek/yüksek' GÖRELİ sınıflardır."),
+     "Veriyi dörde bölen noktalar: Q1'in altında verinin %25'i, medyanın altında "
+     "%50'si, Q3'ün altında %75'i kalır. Medyan, birkaç aşırı değerden "
+     "etkilenmediği için ortalamadan daha dayanıklı bir 'tipik değer' ölçüsüdür; "
+     "raporda MedianAE metriğinde ve seçilen epoch istatistiklerinde kullanılır."),
     ("Logaritmik eksen", "Kayıp eğrilerinde kullanılır. Değerler başta büyük sonra çok "
                           "küçük olduğundan, doğrusal eksende erken düşüş görünmez olurdu."),
     ("Panel harfleri (a), (b), ...", "Çok panelli şekillerde her grafiğin SAĞ ÜST "
