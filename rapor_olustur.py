@@ -265,7 +265,7 @@ XAI_ACIKLAMALARI = {
         "atomların rastgele alt kümeleri kapatılıp (Bernoulli maskesi) modelin "
         "tahmininin nasıl değiştiği ölçülür; sonra bu maske→tahmin ilişkisine "
         "seyrek bir doğrusal model (çapraz-doğrulamalı Lasso) oturtulur. "
-        "Katsayılar = o atomun tahmine YEREL katkısı. Aşağıdaki grafikler bu "
+        "Katsayılar = o atomun tahmine YEREL katkısı. Yukarıdaki grafikler bu "
         "atom katkılarının ELEMENT bazında ortalamasını gösterir: çubuk ne kadar "
         "uzunsa o element tahmini o kadar güçlü etkiliyor demektir (pozitif = "
         "tahmini artırıyor, negatif = azaltıyor)."),
@@ -273,26 +273,29 @@ XAI_ACIKLAMALARI = {
         "Edge Attribution — BAĞ/KENAR ÖNEMİ. Gradyan-tabanlı atıf (saliency + "
         "Integrated Gradients), atomlar arası KENARLARIN (bağların) üzerine "
         "uygulanır: hangi atom-atom etkileşiminin tahmini ne kadar taşıdığı "
-        "ölçülür. 'bond' grafikleri element-çifti (örn. Cu-O) bazında, 'mesafe' "
-        "grafikleri ise bağ uzunluğu aralıkları bazında ortalama önemi gösterir "
-        "— ikincisi, modelin hangi mesafe ölçeğindeki komşuluklara dayandığını "
-        "(kısa kimyasal bağ mı, uzun gözenek-boşluğu teması mı) ortaya koyar."),
+        "ölçülür. Yukarıdaki şekillerin ilk grubu bu önemi element-çifti (bağ "
+        "türü, örn. Cu-O) bazında, ikinci grubu ise bağ uzunluğu aralıkları "
+        "bazında ortalayarak gösterir — ikincisi, modelin hangi mesafe "
+        "ölçeğindeki komşuluklara dayandığını (kısa kimyasal bağ mı, uzun "
+        "gözenek-boşluğu teması mı) ortaya koyar."),
     "SubgraphX": (
         "SubgraphX (Yuan et al., 2021) — AÇIKLAYICI ALT-GRAF ARAMA. Monte Carlo "
         "Ağaç Araması (MCTS) ile, tahmini en iyi açıklayan BAĞLANTILI atom alt "
-        "kümesi ('çekirdek alt-graf') aranır. 'cekirdek_boyut' grafiği bu "
-        "çekirdeklerin kaç atomdan oluştuğunun dağılımını, 'element_onem' "
-        "grafiği ise hangi elementlerin bu açıklayıcı çekirdeklere ne sıklıkta "
-        "girdiğini gösterir (1.0'a yakın = o element neredeyse her zaman "
-        "açıklayıcı çekirdeğin parçası)."),
+        "kümesi ('çekirdek alt-graf') aranır. Yukarıdaki şekillerden ilki bu "
+        "çekirdeğin, ait olduğu grafın atomlarının NE KADARLIK BİR ORANINI "
+        "kapsadığının dağılımını gösterir (x-ekseni: çekirdekteki atom sayısı / "
+        "graftaki toplam atom sayısı, 0–1 arası birimsiz oran); ikincisi ise "
+        "hangi elementlerin bu açıklayıcı çekirdeklere ne sıklıkta girdiğini "
+        "gösterir (1.0'a yakın = o element neredeyse her zaman açıklayıcı "
+        "çekirdeğin parçası)."),
     "IntegratedGradients": (
         "Integrated Gradients (Sundararajan et al., 2017) — SÜREKLİ GİRDİ ATFI. "
         "Maske kullanmaz: girdinin kendisi (atomların 3B koordinatları ve "
         "gözeneklilik/kompozisyon özellikleri) bir 'taban çizgisi'nden gerçek "
         "değere doğru kademeli değiştirilirken gradyanlar integre edilir; bu, "
         "katkıların toplamının tahmin farkına EŞİT olmasını garanti eder "
-        "(completeness aksiyomu). 'ig_aux_onem' grafikleri sayısal gözeneklilik/"
-        "kompozisyon özelliklerinin, 'ig_element_onem' grafikleri ise atom "
+        "(completeness aksiyomu). Yukarıdaki şekillerin ilk grubu sayısal "
+        "gözeneklilik/kompozisyon (aux) özelliklerinin, ikinci grubu ise atom "
         "konumlarının element bazında önemini gösterir."),
 }
 
@@ -300,11 +303,63 @@ XAI_GRAFIK_BASLIKLARI = {
     "graphlime_element_onem": "Element bazında ortalama GraphLIME atom önemi",
     "edge_attribution_bond": "Element-çifti (bağ türü) bazında ortalama kenar önemi",
     "edge_attribution_mesafe": "Bağ uzunluğu aralığı bazında ortalama kenar önemi",
-    "subgraphx_cekirdek_boyut": "Açıklayıcı çekirdek alt-grafların atom sayısı dağılımı",
+    "subgraphx_cekirdek_boyut": ("Açıklayıcı çekirdek alt-grafın graftaki toplam "
+                                 "atom sayısına oranının dağılımı"),
     "subgraphx_element_onem": "Elementlerin açıklayıcı çekirdek alt-grafa girme oranı",
     "ig_aux_onem": "Gözeneklilik/kompozisyon özelliklerinin Integrated Gradients önemi",
     "ig_element_onem": "Element bazında atom-konumu Integrated Gradients önemi",
 }
+
+def _subgraphx_yineleme_sayisi() -> int | None:
+    """SubgraphX'in MCTS yineleme sayisini KAYNAK KODDAN okur (hardcode yok)."""
+    import re
+    yol = PROJECT_ROOT / "SubgraphX" / "run_subgraphx.py"
+    if not yol.exists():
+        return None
+    m = re.search(r"^N_MCTS_ITER\s*=\s*(\d+)", yol.read_text(encoding="utf-8"), re.M)
+    return int(m.group(1)) if m else None
+
+
+def _subgraphx_kapsam_notu() -> str:
+    """SubgraphX'in bulduğu cekirdek alt-graflarin GERCEK kapsamini okur ve
+    bir kisitlama notu uretir. Sayilar subgraphx_cekirdek_alt_graf.csv'den
+    gelir; dosya yoksa bos string doner (asla uydurulmaz)."""
+    yol = PROJECT_ROOT / "SubgraphX" / "sonuclar" / "subgraphx_cekirdek_alt_graf.csv"
+    if not yol.exists():
+        return ""
+    try:
+        d = pd.read_csv(yol)
+    except Exception:
+        return ""
+    gerekli = {"cekirdek_atom_orani", "n_cekirdek", "n_toplam"}
+    if d.empty or not gerekli.issubset(d.columns):
+        return ""
+    oran = d["cekirdek_atom_orani"]
+    disarida = (d["n_toplam"] - d["n_cekirdek"])
+    not_ = (f"KAPSAM NOTU: bu koşumda bulunan çekirdek alt-graflar, ait oldukları "
+            f"grafın atomlarının %{100 * oran.min():.1f}–%{100 * oran.max():.1f}'ini "
+            f"(medyan %{100 * oran.median():.1f}) kapsamaktadır; yani arama, "
+            f"{len(d)} örneğin tamamında graftan yalnızca "
+            f"{int(disarida.min())}–{int(disarida.max())} atom çıkarmıştır. ")
+    if disarida.min() == disarida.max():
+        not_ = (f"KAPSAM NOTU: bu koşumda bulunan çekirdek alt-graflar, ait oldukları "
+                f"grafın atomlarının %{100 * oran.min():.1f}–%{100 * oran.max():.1f}'ini "
+                f"(medyan %{100 * oran.median():.1f}) kapsamaktadır; yani arama, "
+                f"{len(d)} örneğin TAMAMINDA graftan tam olarak "
+                f"{int(disarida.min())} atom çıkarmıştır. ")
+    yineleme = _subgraphx_yineleme_sayisi()
+    bütçe = f"{yineleme} yineleme" if yineleme is not None else "sınırlı sayıda yineleme"
+    not_ += (f"Bunun nedeni arama bütçesidir: MCTS her genişletmede graftan TEK bir "
+             f"atom çıkarır ve bu koşumda örnek başına {bütçe} "
+             f"çalıştırılmıştır; kök düğümün dallanma çarpanı graftaki atom sayısı "
+             f"kadar ({int(d['n_toplam'].min())}–{int(d['n_toplam'].max())}) olduğundan "
+             f"ağaç yalnızca birkaç düzey derinleşebilmektedir. Dolayısıyla bu "
+             f"şekiller, SubgraphX boru hattının uçtan uca çalıştığını gösterir; "
+             f"SEYREK (küçük) bir açıklayıcı çekirdek bulgusu olarak okunamaz. "
+             f"Seyrek çekirdek elde etmek için yineleme sayısının graf boyutuyla "
+             f"ölçeklenecek biçimde artırılması gerekir.")
+    return not_
+
 
 def _etiket_kaynak_dagilimi() -> dict[str, dict[str, int]]:
     """Nihai veri setindeki 'label_source_<hedef>' sütunlarının GERÇEK
@@ -401,6 +456,22 @@ def _ilk_metrikler_json() -> dict | None:
 def _rapor_modelleri() -> list[str]:
     return [m for m in MODEL_KLASORLERI if m in _tum_metrikler_json()]
 
+
+
+def _xai_sira_anahtari(dosya: Path) -> tuple:
+    """XAI sekillerini once grafik TURUNE, sonra §2'deki HEDEF SIRASINA gore
+    siralar. Dosya adi alfabetik siralandiginda hedefler i2 -> kr -> xe_kr -> xe
+    sirasina duser ve raporun geri kalaniyla (Xe, Kr, Xe/Kr, I2) celisirdi."""
+    ad = dosya.stem
+    tur_sira, tur_adi = len(XAI_GRAFIK_BASLIKLARI), ad
+    # en UZUN eslesen onek dogru turdur (ig_element_onem vs ig_aux_onem gibi)
+    eslesen = [(i, onek) for i, onek in enumerate(XAI_GRAFIK_BASLIKLARI)
+               if ad.startswith(onek)]
+    if eslesen:
+        tur_sira, tur_adi = max(eslesen, key=lambda t: len(t[1]))
+    kalan = ad[len(tur_adi):].lstrip("_") if eslesen else ""
+    hedef_sira = TARGET_COLUMNS.index(kalan) if kalan in TARGET_COLUMNS else len(TARGET_COLUMNS)
+    return (tur_sira, hedef_sira, ad)
 
 
 def _xai_baslik(dosya_adi: str) -> str:
@@ -706,7 +777,7 @@ def bolum_model_grafikleri(doc):
         "Gözeneklilik literatürünün temel bulgusunun (Sikora et al. 2012) bu "
         "projedeki karşılığı: Gözenek-Sınırlayıcı Çap (PLD) hedef gazın kinetik "
         "çapına ne kadar yakınsa boyut-eleme (size-sieving) o kadar güçlenir ve "
-        "Xe/Kr seçicilik o kadar yükselir — yani |PLD − d_kinetik(Xe)| ile "
+        "Xe/Kr seçicilik o kadar yükselir — yani |PLD − d_k(Xe)| ile "
         "seçicilik arasında NEGATİF bir eğilim beklenir. Her panelde mavi "
         "noktalar gerçek, turuncu noktalar tahmin edilen seçiciliği, kesikli "
         "çizgiler her ikisine ayrı ayrı oturtulan doğrusal eğilimi gösterir; "
@@ -899,7 +970,7 @@ def bolum_xai(doc):
         add_heading(doc, f"3.{i}. {XAI_BASLIK_ADI.get(xai_adi, xai_adi)}", level=2)
         gdir = PROJECT_ROOT / xai_adi / "sonuclar" / "grafikler"
         if gdir.exists() and any(gdir.glob("*.tif")):
-            for dosya in sorted(gdir.glob("*.tif")):
+            for dosya in sorted(gdir.glob("*.tif"), key=_xai_sira_anahtari):
                 add_image(doc, dosya, width_cm=15)
                 sekil_basligi(doc, _xai_baslik(dosya.stem))
                 etiket_txt = dosya.with_name(dosya.stem + "_etiketler.txt")
@@ -916,6 +987,10 @@ def bolum_xai(doc):
             add_paragraph(doc, f"[Henüz üretilmedi: {xai_adi}/sonuclar/grafikler/]", indent=True)
         add_paragraph(doc, "Yorum", size=10, bold=True, indent=True)
         add_paragraph(doc, XAI_ACIKLAMALARI.get(xai_adi, ""), size=9, indent=True)
+        if xai_adi == "SubgraphX":
+            kapsam = _subgraphx_kapsam_notu()
+            if kapsam:
+                add_paragraph(doc, kapsam, size=9, indent=True)
         doc.add_paragraph()
     page_break(doc)
 

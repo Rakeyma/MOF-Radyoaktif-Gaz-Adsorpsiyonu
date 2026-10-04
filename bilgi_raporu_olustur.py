@@ -857,7 +857,7 @@ def bolum_graf_insa(doc):
                                "modeller ek alanlara (idx_kj / idx_ji / theta) ihtiyaç duyduğundan "
                                "pozisyonel arayüz yerine bu tercih edilmiştir"),
         ("Havuzlama", "scatter-mean (atom → MOF) — graf düzeyinde tek bir gömme vektörü"),
-        ("Grafik boyutu", "Bu veri setinde MOF başına yaklaşık 72–172 atom — GraphLIME gibi "
+        ("Graf boyutu (düğüm sayısı)", "Bu veri setinde MOF başına yaklaşık 72–172 atom — GraphLIME gibi "
                            "maskeleme tabanlı XAI yöntemlerinin ölçek duyarlılığı bakımından "
                            "belirleyici bir büyüklüktür (bkz. §7.3)"),
     ])
@@ -899,7 +899,18 @@ XAI_DETAY = {
         ("Çalışma ilkesi", "Tahmini en iyi açıklayan BAĞLANTILI atom alt kümesi ('çekirdek "
                             "alt-graf') MCTS + UCT seçimiyle aranır"),
         ("Ödül", "Çok-hedefli, standardize uzayda hesaplanan ödül"),
-        ("Çıktı", "Çekirdek alt-graf boyut dağılımı + elementlerin çekirdeğe girme oranı"),
+        ("Çıktı", "Çekirdek alt-grafın graftaki toplam atom sayısına ORANININ dağılımı "
+                   "+ elementlerin çekirdeğe girme oranı"),
+        ("Arama bütçesi", "N_MCTS_ITER=25 yineleme/örnek, fold başına en çok 20 örnek "
+                           "(MAX_PER_FOLD); genişletme adımı graftan TEK atom çıkarır"),
+        ("Bu koşumdaki KISIT", "Kök düğümün dallanma çarpanı graftaki atom sayısı kadar "
+                                "(72–172) olduğundan 25 yineleme ağacı yalnızca birkaç düzey "
+                                "derinleştirebilmiştir: bulunan çekirdekler grafın "
+                                "%97,2–%98,8'ini kapsar (60 örneğin tamamında graftan tam "
+                                "olarak 2 atom çıkarılmıştır). Bu çıktılar boru hattının "
+                                "uçtan uca çalıştığını gösterir; SEYREK bir açıklayıcı "
+                                "çekirdek bulgusu olarak okunamaz. Seyrek çekirdek için "
+                                "yineleme sayısının graf boyutuyla ölçeklenmesi gerekir"),
     ],
     "IntegratedGradients": [
         ("Yöntem", "Integrated Gradients (Sundararajan et al., 2017)"),
@@ -1039,8 +1050,12 @@ def bolum_permutasyon_bulgular(doc):
         ("Çözüm", "Sabit alpha yerine LassoCV — düzenlileştirme katsayısı her örnek "
                    "için çapraz doğrulamayla veriden seçilir, böylece farklı MOF "
                    "boyutlarına otomatik uyum sağlanır"),
-        ("Sonuç", "9954 atom satırının 9518'i (%96) artık sıfır-olmayan gerçek önem "
-                   "skoru taşımaktadır"),
+        ("Sonuç", "9954 atom satırının 9518'i (%96) artık DÖRT hedeften en az birinde "
+                   "sıfır-olmayan gerçek önem skoru taşımaktadır. Hedef bazında "
+                   "bakıldığında sıfır-olmayan satır sayısı 7104–7313'tür (%71–%73): "
+                   "Lasso'nun seyrekleştirme amacı gereği her hedefte atomların bir "
+                   "kısmı elenir; kritik olan, katsayıların artık TOPLU HALDE sıfıra "
+                   "çökmemesidir"),
         ("Genel ders", "Maskeleme tabanlı yerel vekil XAI yöntemleri büyük graflarda "
                         "ÖLÇEĞE DUYARLIDIR: maskelemenin etkisi graf büyüdükçe "
                         "seyrelir ve sabit bir ceza terimi sinyali tamamen "
@@ -1168,9 +1183,10 @@ TERIMLER = [
      "projede etiketler dört hedefin sayısal değerleridir."),
     ("Regresyon / sınıflandırma",
      "Regresyon SAYISAL bir değer tahmin eder (örn. 0.17 mmol/g); sınıflandırma ise "
-     "KATEGORİ tahmin eder (örn. 'yüksek kapasiteli'). Bu proje bir regresyon "
-     "problemidir; karışıklık matrisi grafiklerinde sonuçlar yalnızca "
-     "yorumlanabilirlik için dört sınıfa indirgenir."),
+     "KATEGORİ tahmin eder (örn. 'yüksek kapasiteli'). Bu proje baştan sona bir "
+     "regresyon problemidir: dört hedefin de sayısal değeri tahmin edilir ve "
+     "raporlanan tüm metrikler (R², MAE, RMSE, MedianAE, MaxErr, PearsonR) "
+     "regresyon metrikleridir."),
     ("Model / eğitim (training)",
      "Model, girdiden çıktıya giden ve içinde ayarlanabilir sayılar ('ağırlıklar') "
      "bulunan matematiksel yapıdır. Eğitim, bu ağırlıkların örneklerdeki hatayı "
